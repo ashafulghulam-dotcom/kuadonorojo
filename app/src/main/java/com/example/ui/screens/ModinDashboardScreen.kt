@@ -29,16 +29,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EventNote
-import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.ManageAccounts
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.Calculate
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.ManageAccounts
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -60,41 +64,58 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.example.data.CloudSyncStatus
 import com.example.data.DashboardMode
 import com.example.data.MarriageSchedule
 import com.example.data.ReminderSettings
 import com.example.data.StaffAccount
 import com.example.data.UiState
+import com.example.data.UserRole
 import com.example.data.ValidationStatus
-import com.example.data.Village
 import com.example.data.todayIsoDate
 import com.example.ui.components.DeviceCalendarSyncCard
 import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.ErrorStateCard
 import com.example.ui.components.KpiSummaryStrip
 import com.example.ui.components.KuaHeroHeader
+import com.example.ui.components.MonthlyCalendarSection
 import com.example.ui.components.ScheduleCard
 import com.example.ui.components.ScheduleDetailSheet
 import com.example.ui.components.SearchAndStatusFilterBar
+import com.example.ui.components.SelfProfileSettingsSection
 import com.example.ui.components.TodayWeddingsSpotlightSection
+import com.example.ui.components.WaDigestQuickCard
 import com.example.util.DeviceCalendarSyncManager
 import com.example.util.SmartReminderManager
 import kotlinx.coroutines.launch
 
 private enum class ModinTab(val label: String) {
-    SCHEDULES("Jadwal Desa"),
-    CALCULATOR("Kalkulator KUA")
+    SCHEDULES("Jadwal Modin"),
+    CALCULATOR("Kalkulator"),
+    PROFILE("Akun Saya")
 }
 
 @Composable
 fun ModinDashboardScreen(
     activeAccount: StaffAccount,
     isAdminPreview: Boolean,
-    villagesState: UiState<List<Village>>,
+    staffAccountsState: UiState<List<StaffAccount>>,
     schedulesState: UiState<List<MarriageSchedule>>,
     reminderSettingsState: UiState<ReminderSettings>,
-    previewVillageId: String?,
-    onSelectPreviewVillage: (String?) -> Unit,
+    cloudSyncStatus: CloudSyncStatus = CloudSyncStatus(),
+    previewModinId: String?,
+    isSaving: Boolean,
+    actionMessage: String?,
+    onClearMessage: () -> Unit,
+    onSelectPreviewModin: (String?) -> Unit,
+    onUpdateOwnProfile: (
+        officerName: String,
+        whatsappNumber: String,
+        username: String,
+        currentPassword: String,
+        newPassword: String?,
+        onSuccess: () -> Unit
+    ) -> Unit,
     onSwitchMode: (DashboardMode) -> Unit,
     onLogoutStaff: () -> Unit
 ) {
@@ -103,9 +124,10 @@ fun ModinDashboardScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     var selectedTab by remember { mutableStateOf(ModinTab.SCHEDULES) }
+    var showCalendarView by remember { mutableStateOf(false) }
+    var selectedCalendarDate by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedStatusFilter by remember { mutableStateOf<ValidationStatus?>(null) }
-    var onlyMySchedules by remember { mutableStateOf(!isAdminPreview) }
     var detailSchedule by remember { mutableStateOf<MarriageSchedule?>(null) }
     var hasNotifPermission by remember {
         mutableStateOf(SmartReminderManager.hasNotificationPermission(context))
@@ -117,6 +139,13 @@ fun ModinDashboardScreen(
         hasNotifPermission = granted
     }
 
+    LaunchedEffect(actionMessage) {
+        if (actionMessage != null) {
+            snackbarHostState.showSnackbar(actionMessage)
+            onClearMessage()
+        }
+    }
+
     // Request notification permission automatically on Android 13+ when Modin opens dashboard
     LaunchedEffect(Unit) {
         if (!hasNotifPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -124,7 +153,7 @@ fun ModinDashboardScreen(
         }
     }
 
-    // Back returns from Calculator tab to Jadwal Desa, or from Admin Preview back to Admin KUA
+    // Back returns to Jadwal Modin tab, or from Admin Preview back to Admin KUA
     BackHandler(enabled = selectedTab != ModinTab.SCHEDULES || isAdminPreview) {
         if (selectedTab != ModinTab.SCHEDULES) {
             selectedTab = ModinTab.SCHEDULES
@@ -133,95 +162,108 @@ fun ModinDashboardScreen(
         }
     }
 
-    val villages = (villagesState as? UiState.Success)?.data.orEmpty()
+    val allAccounts = (staffAccountsState as? UiState.Success)?.data.orEmpty()
+    val modinAccounts = remember(allAccounts) {
+        allAccounts.filter { it.resolvedRole() == UserRole.MODIN }
+    }
     val allSchedules = (schedulesState as? UiState.Success)?.data.orEmpty()
     val reminderSettings = (reminderSettingsState as? UiState.Success)?.data ?: ReminderSettings()
 
-    // Determine active village scope:
-    // - For logged-in Modin: strictly locked to activeAccount.villageId
-    // - For Admin previewing Modin Dashboard: selected previewVillageId (or first of the 8 villages)
-    val targetVillageCode = remember(isAdminPreview, activeAccount.villageId, previewVillageId, villages) {
+    // Determine active Modin scope (strictly per-Modin, NOT per-village):
+    // - Logged-in Modin: strictly locked to activeAccount
+    // - Admin Preview: selected Modin account from modinAccounts
+    val targetModin: StaffAccount? = remember(isAdminPreview, activeAccount, previewModinId, modinAccounts) {
         if (isAdminPreview) {
-            previewVillageId ?: villages.firstOrNull()?.code.orEmpty()
+            modinAccounts.firstOrNull { it.id == previewModinId } ?: modinAccounts.firstOrNull()
         } else {
-            activeAccount.villageId
+            activeAccount
         }
     }
 
-    val activeVillageName = remember(isAdminPreview, activeAccount.villageName, targetVillageCode, villages) {
-        villages.firstOrNull { it.code == targetVillageCode }?.name
-            ?: activeAccount.villageName.ifBlank { "Wilayah Desa" }
-    }
-
-    val villageScopedSchedules = remember(allSchedules, targetVillageCode) {
-        if (targetVillageCode.isNotBlank()) {
-            allSchedules.filter { it.villageId == targetVillageCode }
-        } else {
+    val myAssignedSchedules = remember(allSchedules, targetModin) {
+        if (targetModin == null) {
             emptyList()
+        } else {
+            allSchedules.filter { item ->
+                item.modinAccountId == targetModin.id ||
+                    (item.modinAccountId.isBlank() &&
+                        item.modinName.isNotBlank() &&
+                        item.modinName.equals(targetModin.officerName, ignoreCase = true))
+            }
         }
-    }
-
-    val myAssignedSchedules = remember(villageScopedSchedules, activeAccount.id, activeAccount.officerName) {
-        villageScopedSchedules.filter { item ->
-            item.modinAccountId == activeAccount.id ||
-                (item.modinAccountId.isBlank() &&
-                    (item.modinName.isBlank() || item.modinName.equals(activeAccount.officerName, ignoreCase = true)))
-        }
-    }
-
-    val activeScopeSchedules = remember(villageScopedSchedules, myAssignedSchedules, isAdminPreview, onlyMySchedules) {
-        if (!isAdminPreview && onlyMySchedules) myAssignedSchedules else villageScopedSchedules
     }
 
     val todayIso = remember { todayIsoDate() }
-    val todaySchedules = remember(activeScopeSchedules, todayIso) {
-        activeScopeSchedules.filter {
+    val todaySchedules = remember(myAssignedSchedules, todayIso) {
+        myAssignedSchedules.filter {
             it.weddingDate == todayIso && it.resolvedStatus() != ValidationStatus.DIBATALKAN
         }.sortedBy { it.weddingTime }
     }
 
-    // Automatic HP notification trigger for Modin on wedding day (H-0) & configured reminder days (H-1/H-3)
-    val notifTargetSchedules = if (isAdminPreview) villageScopedSchedules else myAssignedSchedules
-    LaunchedEffect(notifTargetSchedules, reminderSettings, hasNotifPermission) {
-        if (hasNotifPermission && notifTargetSchedules.isNotEmpty()) {
+    val activeModinDisplay = targetModin?.officerName ?: "Modin KUA Donorojo"
+    val activeModinSubtitle = remember(targetModin) {
+        if (targetModin == null) {
+            "Jadwal Tugas Modin & Kalender HP"
+        } else if (targetModin.villageName.isNotBlank()) {
+            "${targetModin.officerName} (${targetModin.villageName}) • Jadwal Tugas Modin"
+        } else {
+            "${targetModin.officerName} • Jadwal Tugas Modin"
+        }
+    }
+
+    // Automatic HP notification trigger strictly for this Modin's assigned schedules
+    LaunchedEffect(myAssignedSchedules, reminderSettings, hasNotifPermission) {
+        if (hasNotifPermission && myAssignedSchedules.isNotEmpty()) {
             val sentCount = SmartReminderManager.checkAndTriggerAutoNotifications(
                 context = context,
-                schedules = notifTargetSchedules,
+                schedules = myAssignedSchedules,
                 settings = reminderSettings
             )
             if (sentCount > 0) {
                 snackbarHostState.showSnackbar(
-                    "Notifikasi otomatis terkirim untuk $sentCount jadwal akad di $activeVillageName."
+                    "Notifikasi otomatis terkirim untuk $sentCount jadwal tugas $activeModinDisplay."
                 )
             }
         }
     }
 
-    val filteredSchedules = remember(activeScopeSchedules, searchQuery, selectedStatusFilter) {
-        activeScopeSchedules.filter { item ->
+    val filteredSchedules = remember(
+        myAssignedSchedules,
+        searchQuery,
+        selectedStatusFilter,
+        showCalendarView,
+        selectedCalendarDate
+    ) {
+        myAssignedSchedules.filter { item ->
             val status = item.resolvedStatus()
             val matchesStatus = selectedStatusFilter == null || status == selectedStatusFilter
+            val matchesDate = if (showCalendarView && !selectedCalendarDate.isNullOrBlank()) {
+                item.weddingDate == selectedCalendarDate
+            } else {
+                true
+            }
             val q = searchQuery.trim().lowercase()
             val matchesSearch = q.isEmpty() ||
                 item.groomName.lowercase().contains(q) ||
                 item.brideName.lowercase().contains(q) ||
+                item.villageName.lowercase().contains(q) ||
                 item.modinName.lowercase().contains(q) ||
                 item.registrationNumber.lowercase().contains(q) ||
                 item.penghuluName.lowercase().contains(q)
-            matchesStatus && matchesSearch
+            matchesStatus && matchesDate && matchesSearch
         }
     }
 
-    val pendingCount = remember(activeScopeSchedules) {
-        activeScopeSchedules.count {
+    val pendingCount = remember(myAssignedSchedules) {
+        myAssignedSchedules.count {
             val st = it.resolvedStatus()
             st == ValidationStatus.MENUNGGU ||
                 st == ValidationStatus.VERIFIKASI_BERKAS ||
                 st == ValidationStatus.PERLU_REVISI
         }
     }
-    val verifiedCount = remember(activeScopeSchedules) {
-        activeScopeSchedules.count {
+    val verifiedCount = remember(myAssignedSchedules) {
+        myAssignedSchedules.count {
             val st = it.resolvedStatus()
             st == ValidationStatus.TERVERIFIKASI || st == ValidationStatus.SELESAI
         }
@@ -233,37 +275,47 @@ fun ModinDashboardScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             Column {
-                androidx.compose.material3.HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant
-                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 0.dp
                 ) {
-                NavigationBarItem(
-                    selected = selectedTab == ModinTab.SCHEDULES,
-                    onClick = { selectedTab = ModinTab.SCHEDULES },
-                    icon = {
-                        Icon(
-                            imageVector = if (selectedTab == ModinTab.SCHEDULES) Icons.Filled.CalendarMonth else Icons.Outlined.CalendarMonth,
-                            contentDescription = null
-                        )
-                    },
-                    label = { Text(ModinTab.SCHEDULES.label) },
-                    modifier = Modifier.testTag("modin_tab_schedules")
-                )
-                NavigationBarItem(
-                    selected = selectedTab == ModinTab.CALCULATOR,
-                    onClick = { selectedTab = ModinTab.CALCULATOR },
-                    icon = {
-                        Icon(
-                            imageVector = if (selectedTab == ModinTab.CALCULATOR) Icons.Filled.Calculate else Icons.Outlined.Calculate,
-                            contentDescription = null
-                        )
-                    },
-                    label = { Text(ModinTab.CALCULATOR.label) },
-                    modifier = Modifier.testTag("modin_tab_calculator")
-                )
+                    NavigationBarItem(
+                        selected = selectedTab == ModinTab.SCHEDULES,
+                        onClick = { selectedTab = ModinTab.SCHEDULES },
+                        icon = {
+                            Icon(
+                                imageVector = if (selectedTab == ModinTab.SCHEDULES) Icons.Filled.CalendarMonth else Icons.Outlined.CalendarMonth,
+                                contentDescription = null
+                            )
+                        },
+                        label = { Text(ModinTab.SCHEDULES.label, maxLines = 1) },
+                        modifier = Modifier.testTag("modin_tab_schedules")
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == ModinTab.CALCULATOR,
+                        onClick = { selectedTab = ModinTab.CALCULATOR },
+                        icon = {
+                            Icon(
+                                imageVector = if (selectedTab == ModinTab.CALCULATOR) Icons.Filled.Calculate else Icons.Outlined.Calculate,
+                                contentDescription = null
+                            )
+                        },
+                        label = { Text(ModinTab.CALCULATOR.label, maxLines = 1) },
+                        modifier = Modifier.testTag("modin_tab_calculator")
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == ModinTab.PROFILE,
+                        onClick = { selectedTab = ModinTab.PROFILE },
+                        icon = {
+                            Icon(
+                                imageVector = if (selectedTab == ModinTab.PROFILE) Icons.Filled.ManageAccounts else Icons.Outlined.ManageAccounts,
+                                contentDescription = null
+                            )
+                        },
+                        label = { Text(ModinTab.PROFILE.label, maxLines = 1) },
+                        modifier = Modifier.testTag("modin_tab_profile")
+                    )
                 }
             }
         }
@@ -284,9 +336,9 @@ fun ModinDashboardScreen(
                 item(key = "modin_hero_header") {
                     KuaHeroHeader(
                         title = "Dasbor Modin Donorojo",
-                        subtitle = "$activeVillageName • Pantau Status Real-Time",
+                        subtitle = activeModinSubtitle,
                         officerName = "${activeAccount.officerName} (@${activeAccount.username})",
-                        roleBadge = if (isAdminPreview) "Pratinjau Modin • Baca Saja" else "Modin Desa • Real-Time",
+                        roleBadge = if (isAdminPreview) "Pratinjau Modin • Baca Saja" else "Modin Desa • Jadwal Pribadi",
                         isAdminAccount = isAdminPreview,
                         currentMode = DashboardMode.MODIN_DESA,
                         onSwitchMode = onSwitchMode,
@@ -294,237 +346,299 @@ fun ModinDashboardScreen(
                     )
                 }
 
-                if (selectedTab == ModinTab.CALCULATOR) {
-                    item(key = "modin_kua_calculators") {
-                        KuaCalculatorsSection()
-                    }
-                } else {
-                    item(key = "modin_calendar_sync") {
-                        DeviceCalendarSyncCard(
-                            accountId = if (isAdminPreview) "preview_modin_$targetVillageCode" else activeAccount.id,
-                            roleLabel = "Modin Desa",
-                            schedulesToSync = if (isAdminPreview) villageScopedSchedules else myAssignedSchedules,
-                            onFeedback = { message ->
-                                scope.launch { snackbarHostState.showSnackbar(message) }
-                            }
-                        )
+                when (selectedTab) {
+                    ModinTab.CALCULATOR -> {
+                        item(key = "modin_kua_calculators") {
+                            KuaCalculatorsSection()
+                        }
                     }
 
-                    // Notification permission prompt or active indicator
-                    item(key = "modin_notif_banner") {
-                        if (!hasNotifPermission) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.85f),
-                                shape = RoundedCornerShape(14.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
+                    ModinTab.PROFILE -> {
+                        item(key = "modin_self_profile") {
+                            val profileAccount = targetModin ?: activeAccount
+                            SelfProfileSettingsSection(
+                                account = profileAccount,
+                                isAdminPreview = isAdminPreview,
+                                isSaving = isSaving,
+                                onSaveProfile = onUpdateOwnProfile
+                            )
+                        }
+                    }
+
+                    ModinTab.SCHEDULES -> {
+                        // Admin Preview Modin Account Selector (per-Modin, NOT per-village)
+                        if (isAdminPreview && modinAccounts.isNotEmpty()) {
+                            item(key = "modin_preview_selector") {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        text = "Pilih Akun Modin untuk Pratinjau Jadwal:",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                     Row(
-                                        modifier = Modifier.weight(1f),
-                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
+                                        modinAccounts.forEach { modin ->
+                                            val selected = targetModin?.id == modin.id
+                                            val villageShort = modin.villageName.removePrefix("Desa ")
+                                            val chipText = if (villageShort.isNotBlank()) {
+                                                "${modin.officerName} ($villageShort)"
+                                            } else {
+                                                modin.officerName
+                                            }
+                                            FilterChip(
+                                                selected = selected,
+                                                onClick = { onSelectPreviewModin(modin.id) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Person,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                },
+                                                label = { Text(chipText) },
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                                ),
+                                                modifier = Modifier.testTag("modin_preview_chip_${modin.id}")
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        item(key = "modin_calendar_sync") {
+                            DeviceCalendarSyncCard(
+                                accountId = targetModin?.id ?: activeAccount.id,
+                                roleLabel = "Modin Desa",
+                                schedulesToSync = myAssignedSchedules,
+                                onFeedback = { message ->
+                                    scope.launch { snackbarHostState.showSnackbar(message) }
+                                }
+                            )
+                        }
+
+                        // 1-click WA Group Digest share/copy for Modin
+                        item(key = "modin_wa_digest_card") {
+                            val resolvedAdminWa = remember(reminderSettings, allAccounts) {
+                                SmartReminderManager.resolveAdminWhatsappNumber(reminderSettings, allAccounts)
+                            }
+                            val digestScope = if (targetModin?.villageName?.isNotBlank() == true) {
+                                "$activeModinDisplay (${targetModin.villageName})"
+                            } else {
+                                activeModinDisplay
+                            }
+                            WaDigestQuickCard(
+                                schedules = myAssignedSchedules,
+                                scopeLabel = digestScope,
+                                adminWhatsappNumber = resolvedAdminWa,
+                                appPreference = reminderSettings.resolvedAdminWhatsappApp(),
+                                onFeedback = { message ->
+                                    scope.launch { snackbarHostState.showSnackbar(message) }
+                                }
+                            )
+                        }
+
+                        // Notification permission prompt or active indicator
+                        item(key = "modin_notif_banner") {
+                            if (!hasNotifPermission) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.85f),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.NotificationsOff,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Text(
+                                                text = "Aktifkan izin notifikasi HP agar pengingat jadwal tugas $activeModinDisplay muncul otomatis.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onErrorContainer
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Button(
+                                            onClick = {
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                                    notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                                }
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.testTag("modin_enable_notif_button")
+                                        ) {
+                                            Text("Aktifkan", style = MaterialTheme.typography.labelSmall)
+                                        }
+                                    }
+                                }
+                            } else {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(14.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
                                         Icon(
-                                            imageVector = Icons.Filled.NotificationsOff,
+                                            imageVector = if (reminderSettings.autoPhoneNotifEnabled) {
+                                                Icons.Filled.NotificationsActive
+                                            } else {
+                                                Icons.Filled.Lock
+                                            },
                                             contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(20.dp)
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
                                         )
                                         Text(
-                                            text = "Aktifkan izin notifikasi HP agar pengingat hari nikah di $activeVillageName muncul otomatis.",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onErrorContainer
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Button(
-                                        onClick = {
-                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                                notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                            }
-                                        },
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                        shape = RoundedCornerShape(10.dp),
-                                        modifier = Modifier.testTag("modin_enable_notif_button")
-                                    ) {
-                                        Text("Aktifkan", style = MaterialTheme.typography.labelSmall)
-                                    }
-                                }
-                            }
-                        } else {
-                            Surface(
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                                shape = RoundedCornerShape(14.dp),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (reminderSettings.autoPhoneNotifEnabled) {
-                                            Icons.Filled.NotificationsActive
-                                        } else {
-                                            Icons.Filled.Lock
-                                        },
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Text(
-                                        text = if (reminderSettings.autoPhoneNotifEnabled) {
-                                            "Notif HP Otomatis Aktif (Mode Pantau Baca Saja). Pengingat hari nikah untuk $activeVillageName akan muncul otomatis."
-                                        } else {
-                                            "Akses Pantau Wilayah (Read-Only): Perubahan data & verifikasi akhir dikelola oleh Admin KUA Donorojo."
-                                        },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Village selector only shown when Admin previews the 8 Donorojo villages
-                    if (isAdminPreview && villages.isNotEmpty()) {
-                        item(key = "modin_village_selector") {
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(
-                                    text = "Pilih Wilayah Desa Donorojo untuk Pratinjau:",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    villages.forEach { village ->
-                                        val selected = targetVillageCode == village.code
-                                        FilterChip(
-                                            selected = selected,
-                                            onClick = { onSelectPreviewVillage(village.code) },
-                                            leadingIcon = {
-                                                Icon(
-                                                    imageVector = Icons.Filled.LocationOn,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(16.dp)
+                                            text = buildString {
+                                                append(
+                                                    if (reminderSettings.autoPhoneNotifEnabled) {
+                                                        "Menampilkan jadwal khusus $activeModinDisplay. Notif HP otomatis aktif pada hari akad."
+                                                    } else {
+                                                        "Menampilkan jadwal khusus $activeModinDisplay (Mode Baca Saja). Perubahan jadwal dikelola Admin KUA Donorojo."
+                                                    }
                                                 )
+                                                if (cloudSyncStatus.isOnlineSynced) {
+                                                    append(" • Cloud Online")
+                                                }
                                             },
-                                            label = { Text(village.name) },
-                                            colors = FilterChipDefaults.filterChipColors(
-                                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                            ),
-                                            modifier = Modifier.testTag("modin_village_chip_${village.code}")
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
                                         )
                                     }
                                 }
                             }
                         }
-                    }
 
-                    if (!isAdminPreview) {
-                        item(key = "modin_scope_toggle") {
+                        item(key = "modin_view_mode_toggle") {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
+                                modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 FilterChip(
-                                    selected = onlyMySchedules,
-                                    onClick = { onlyMySchedules = true },
-                                    label = { Text("Jadwal Saya (${myAssignedSchedules.size})") },
+                                    selected = !showCalendarView,
+                                    onClick = { showCalendarView = false },
+                                    leadingIcon = {
+                                        Icon(Icons.Filled.List, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    },
+                                    label = { Text("Daftar Jadwal") },
                                     colors = FilterChipDefaults.filterChipColors(
                                         selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                                         selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
                                     ),
-                                    modifier = Modifier.testTag("modin_filter_mine")
+                                    modifier = Modifier.testTag("modin_view_list")
                                 )
                                 FilterChip(
-                                    selected = !onlyMySchedules,
-                                    onClick = { onlyMySchedules = false },
-                                    label = { Text("Semua Desa (${villageScopedSchedules.size})") },
+                                    selected = showCalendarView,
+                                    onClick = { showCalendarView = true },
+                                    leadingIcon = {
+                                        Icon(Icons.Filled.CalendarMonth, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    },
+                                    label = { Text("Kalender Bulanan") },
                                     colors = FilterChipDefaults.filterChipColors(
                                         selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                                         selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
                                     ),
-                                    modifier = Modifier.testTag("modin_filter_village")
+                                    modifier = Modifier.testTag("modin_view_calendar")
                                 )
                             }
                         }
-                    }
 
-                    // Today's Weddings Spotlight prominently on Main Dashboard
-                    item(key = "modin_today_spotlight") {
-                        TodayWeddingsSpotlightSection(
-                            todaySchedules = todaySchedules,
-                            isAdminMode = false,
-                            onScheduleClick = { detailSchedule = it }
-                        )
-                    }
-
-                    item(key = "modin_kpi_strip") {
-                        KpiSummaryStrip(
-                            totalCount = activeScopeSchedules.size,
-                            pendingCount = pendingCount,
-                            verifiedCount = verifiedCount
-                        )
-                    }
-
-                    item(key = "modin_search_filter") {
-                        SearchAndStatusFilterBar(
-                            searchQuery = searchQuery,
-                            onSearchChange = { searchQuery = it },
-                            selectedStatus = selectedStatusFilter,
-                            onSelectStatus = { selectedStatusFilter = it }
-                        )
-                    }
-
-                    when (schedulesState) {
-                        is UiState.Loading -> {
-                            item(key = "modin_loading") {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 36.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator()
-                                }
+                        if (showCalendarView) {
+                            item(key = "modin_monthly_calendar") {
+                                MonthlyCalendarSection(
+                                    schedules = myAssignedSchedules,
+                                    selectedIsoDate = selectedCalendarDate,
+                                    onSelectDate = { selectedCalendarDate = it }
+                                )
+                            }
+                        } else {
+                            // Today's Weddings Spotlight strictly for this Modin
+                            item(key = "modin_today_spotlight") {
+                                TodayWeddingsSpotlightSection(
+                                    todaySchedules = todaySchedules,
+                                    isAdminMode = false,
+                                    onScheduleClick = { detailSchedule = it }
+                                )
                             }
                         }
 
-                        is UiState.Error -> {
-                            item(key = "modin_error") {
-                                ErrorStateCard(message = schedulesState.message)
-                            }
+                        item(key = "modin_kpi_strip") {
+                            KpiSummaryStrip(
+                                totalCount = myAssignedSchedules.size,
+                                pendingCount = pendingCount,
+                                verifiedCount = verifiedCount
+                            )
                         }
 
-                        is UiState.Success -> {
-                            if (filteredSchedules.isEmpty()) {
-                                item(key = "modin_empty") {
-                                    EmptyStateCard(
-                                        icon = Icons.Filled.EventNote,
-                                        title = "Belum Ada Pendaftar di $activeVillageName",
-                                        description = "Saat Admin KUA Donorojo menginput pendaftaran nikah untuk $activeVillageName, data dan status validasinya akan muncul real-time di sini."
-                                    )
+                        item(key = "modin_search_filter") {
+                            SearchAndStatusFilterBar(
+                                searchQuery = searchQuery,
+                                onSearchChange = { searchQuery = it },
+                                selectedStatus = selectedStatusFilter,
+                                onSelectStatus = { selectedStatusFilter = it }
+                            )
+                        }
+
+                        when (schedulesState) {
+                            is UiState.Loading -> {
+                                item(key = "modin_loading") {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 36.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator()
+                                    }
                                 }
-                            } else {
-                                items(filteredSchedules, key = { it.id }) { schedule ->
-                                    ScheduleCard(
-                                        schedule = schedule,
-                                        isAdminMode = false,
-                                        onClick = { detailSchedule = schedule }
-                                    )
+                            }
+
+                            is UiState.Error -> {
+                                item(key = "modin_error") {
+                                    ErrorStateCard(message = schedulesState.message)
+                                }
+                            }
+
+                            is UiState.Success -> {
+                                if (filteredSchedules.isEmpty()) {
+                                    item(key = "modin_empty") {
+                                        EmptyStateCard(
+                                            icon = Icons.Filled.EventNote,
+                                            title = "Belum Ada Jadwal Tugas Modin",
+                                            description = "Saat Admin KUA Donorojo menunjuk $activeModinDisplay sebagai Modin pendamping pada jadwal akad nikah, datanya akan tampil otomatis di sini."
+                                        )
+                                    }
+                                } else {
+                                    items(filteredSchedules, key = { it.id }) { schedule ->
+                                        ScheduleCard(
+                                            schedule = schedule,
+                                            isAdminMode = false,
+                                            onClick = { detailSchedule = schedule }
+                                        )
+                                    }
                                 }
                             }
                         }

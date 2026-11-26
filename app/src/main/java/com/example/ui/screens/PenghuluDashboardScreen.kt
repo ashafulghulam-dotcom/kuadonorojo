@@ -29,12 +29,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EventNote
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.ManageAccounts
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.Calculate
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.ManageAccounts
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -61,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.example.data.CloudSyncStatus
 import com.example.data.DashboardMode
 import com.example.data.MarriageSchedule
 import com.example.data.ReminderSettings
@@ -74,17 +78,21 @@ import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.ErrorStateCard
 import com.example.ui.components.KpiSummaryStrip
 import com.example.ui.components.KuaHeroHeader
+import com.example.ui.components.MonthlyCalendarSection
 import com.example.ui.components.ScheduleCard
 import com.example.ui.components.ScheduleDetailSheet
 import com.example.ui.components.SearchAndStatusFilterBar
+import com.example.ui.components.SelfProfileSettingsSection
 import com.example.ui.components.TodayWeddingsSpotlightSection
+import com.example.ui.components.WaDigestQuickCard
 import com.example.util.DeviceCalendarSyncManager
 import com.example.util.SmartReminderManager
 import kotlinx.coroutines.launch
 
 private enum class PenghuluTab(val label: String) {
     SCHEDULES("Jadwal Tugas"),
-    CALCULATOR("Kalkulator KUA")
+    CALCULATOR("Kalkulator"),
+    PROFILE("Akun Saya")
 }
 
 @Composable
@@ -94,8 +102,20 @@ fun PenghuluDashboardScreen(
     staffAccountsState: UiState<List<StaffAccount>>,
     schedulesState: UiState<List<MarriageSchedule>>,
     reminderSettingsState: UiState<ReminderSettings>,
+    cloudSyncStatus: CloudSyncStatus = CloudSyncStatus(),
     previewPenghuluId: String?,
+    isSaving: Boolean,
+    actionMessage: String?,
+    onClearMessage: () -> Unit,
     onSelectPreviewPenghulu: (String?) -> Unit,
+    onUpdateOwnProfile: (
+        officerName: String,
+        whatsappNumber: String,
+        username: String,
+        currentPassword: String,
+        newPassword: String?,
+        onSuccess: () -> Unit
+    ) -> Unit,
     onSwitchMode: (DashboardMode) -> Unit,
     onLogoutStaff: () -> Unit
 ) {
@@ -104,6 +124,8 @@ fun PenghuluDashboardScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     var selectedTab by remember { mutableStateOf(PenghuluTab.SCHEDULES) }
+    var showCalendarView by remember { mutableStateOf(false) }
+    var selectedCalendarDate by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedStatusFilter by remember { mutableStateOf<ValidationStatus?>(null) }
     var onlyMySchedules by remember { mutableStateOf(true) }
@@ -116,6 +138,13 @@ fun PenghuluDashboardScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasNotifPermission = granted
+    }
+
+    LaunchedEffect(actionMessage) {
+        if (actionMessage != null) {
+            snackbarHostState.showSnackbar(actionMessage)
+            onClearMessage()
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -188,10 +217,21 @@ fun PenghuluDashboardScreen(
         }
     }
 
-    val filteredSchedules = remember(activeScopeSchedules, searchQuery, selectedStatusFilter) {
+    val filteredSchedules = remember(
+        activeScopeSchedules,
+        searchQuery,
+        selectedStatusFilter,
+        showCalendarView,
+        selectedCalendarDate
+    ) {
         activeScopeSchedules.filter { item ->
             val status = item.resolvedStatus()
             val matchesStatus = selectedStatusFilter == null || status == selectedStatusFilter
+            val matchesDate = if (showCalendarView && !selectedCalendarDate.isNullOrBlank()) {
+                item.weddingDate == selectedCalendarDate
+            } else {
+                true
+            }
             val q = searchQuery.trim().lowercase()
             val matchesSearch = q.isEmpty() ||
                 item.groomName.lowercase().contains(q) ||
@@ -200,7 +240,7 @@ fun PenghuluDashboardScreen(
                 item.modinName.lowercase().contains(q) ||
                 item.registrationNumber.lowercase().contains(q) ||
                 item.penghuluName.lowercase().contains(q)
-            matchesStatus && matchesSearch
+            matchesStatus && matchesDate && matchesSearch
         }
     }
 
@@ -241,7 +281,7 @@ fun PenghuluDashboardScreen(
                                 contentDescription = null
                             )
                         },
-                        label = { Text(PenghuluTab.SCHEDULES.label) },
+                        label = { Text(PenghuluTab.SCHEDULES.label, maxLines = 1) },
                         modifier = Modifier.testTag("penghulu_tab_schedules")
                     )
                     NavigationBarItem(
@@ -253,8 +293,20 @@ fun PenghuluDashboardScreen(
                                 contentDescription = null
                             )
                         },
-                        label = { Text(PenghuluTab.CALCULATOR.label) },
+                        label = { Text(PenghuluTab.CALCULATOR.label, maxLines = 1) },
                         modifier = Modifier.testTag("penghulu_tab_calculator")
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == PenghuluTab.PROFILE,
+                        onClick = { selectedTab = PenghuluTab.PROFILE },
+                        icon = {
+                            Icon(
+                                imageVector = if (selectedTab == PenghuluTab.PROFILE) Icons.Filled.ManageAccounts else Icons.Outlined.ManageAccounts,
+                                contentDescription = null
+                            )
+                        },
+                        label = { Text(PenghuluTab.PROFILE.label, maxLines = 1) },
+                        modifier = Modifier.testTag("penghulu_tab_profile")
                     )
                 }
             }
@@ -286,17 +338,53 @@ fun PenghuluDashboardScreen(
                     )
                 }
 
-                if (selectedTab == PenghuluTab.CALCULATOR) {
-                    item(key = "penghulu_kua_calculators") {
-                        KuaCalculatorsSection()
+                when (selectedTab) {
+                    PenghuluTab.CALCULATOR -> {
+                        item(key = "penghulu_kua_calculators") {
+                            KuaCalculatorsSection()
+                        }
                     }
-                } else {
+
+                    PenghuluTab.PROFILE -> {
+                        item(key = "penghulu_self_profile") {
+                            val profileAccount = targetPenghulu ?: activeAccount
+                            SelfProfileSettingsSection(
+                                account = profileAccount,
+                                isAdminPreview = isAdminPreview,
+                                isSaving = isSaving,
+                                onSaveProfile = onUpdateOwnProfile
+                            )
+                        }
+                    }
+
+                    PenghuluTab.SCHEDULES -> {
                     // Calendar Sync Card directly on Penghulu dashboard
                     item(key = "penghulu_calendar_sync") {
                         DeviceCalendarSyncCard(
                             accountId = targetPenghulu?.id ?: activeAccount.id,
                             roleLabel = "Penghulu KUA",
                             schedulesToSync = myAssignedSchedules,
+                            onFeedback = { msg ->
+                                scope.launch { snackbarHostState.showSnackbar(msg) }
+                            }
+                        )
+                    }
+
+                    // 1-click WA Group Digest share/copy for Penghulu
+                    item(key = "penghulu_wa_digest_card") {
+                        val resolvedAdminWa = remember(reminderSettings, allAccounts) {
+                            SmartReminderManager.resolveAdminWhatsappNumber(reminderSettings, allAccounts)
+                        }
+                        val digestScope = if (onlyMySchedules && targetPenghulu != null) {
+                            "Penghulu: ${targetPenghulu.officerName}"
+                        } else {
+                            "Semua Wilayah (8 Desa)"
+                        }
+                        WaDigestQuickCard(
+                            schedules = activeScopeSchedules,
+                            scopeLabel = digestScope,
+                            adminWhatsappNumber = resolvedAdminWa,
+                            appPreference = reminderSettings.resolvedAdminWhatsappApp(),
                             onFeedback = { msg ->
                                 scope.launch { snackbarHostState.showSnackbar(msg) }
                             }
@@ -371,10 +459,17 @@ fun PenghuluDashboardScreen(
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Text(
-                                        text = if (reminderSettings.autoPhoneNotifEnabled) {
-                                            "Notif HP Otomatis Aktif. Pengingat akad untuk tugas $activePenghuluDisplay aktif otomatis."
-                                        } else {
-                                            "Mode Pantau Penghulu (Read-Only): Perubahan jadwal dikelola oleh Admin KUA Donorojo."
+                                        text = buildString {
+                                            append(
+                                                if (reminderSettings.autoPhoneNotifEnabled) {
+                                                    "Notif HP Otomatis Aktif. Pengingat akad untuk tugas $activePenghuluDisplay aktif otomatis."
+                                                } else {
+                                                    "Mode Pantau Penghulu (Read-Only): Perubahan jadwal dikelola oleh Admin KUA Donorojo."
+                                                }
+                                            )
+                                            if (cloudSyncStatus.isOnlineSynced) {
+                                                append(" • Cloud Online")
+                                            }
                                         },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -455,12 +550,56 @@ fun PenghuluDashboardScreen(
                         }
                     }
 
-                    item(key = "penghulu_today_spotlight") {
-                        TodayWeddingsSpotlightSection(
-                            todaySchedules = todaySchedules,
-                            isAdminMode = false,
-                            onScheduleClick = { detailSchedule = it }
-                        )
+                    item(key = "penghulu_view_mode_toggle") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = !showCalendarView,
+                                onClick = { showCalendarView = false },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.List, contentDescription = null, modifier = Modifier.size(16.dp))
+                                },
+                                label = { Text("Daftar Jadwal") },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                ),
+                                modifier = Modifier.testTag("penghulu_view_list")
+                            )
+                            FilterChip(
+                                selected = showCalendarView,
+                                onClick = { showCalendarView = true },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.CalendarMonth, contentDescription = null, modifier = Modifier.size(16.dp))
+                                },
+                                label = { Text("Kalender Bulanan") },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                ),
+                                modifier = Modifier.testTag("penghulu_view_calendar")
+                            )
+                        }
+                    }
+
+                    if (showCalendarView) {
+                        item(key = "penghulu_monthly_calendar") {
+                            MonthlyCalendarSection(
+                                schedules = activeScopeSchedules,
+                                selectedIsoDate = selectedCalendarDate,
+                                onSelectDate = { selectedCalendarDate = it }
+                            )
+                        }
+                    } else {
+                        item(key = "penghulu_today_spotlight") {
+                            TodayWeddingsSpotlightSection(
+                                todaySchedules = todaySchedules,
+                                isAdminMode = false,
+                                onScheduleClick = { detailSchedule = it }
+                            )
+                        }
                     }
 
                     item(key = "penghulu_kpi_strip") {
@@ -527,6 +666,7 @@ fun PenghuluDashboardScreen(
                                 }
                             }
                         }
+                    }
                     }
                 }
             }

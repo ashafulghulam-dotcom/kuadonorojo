@@ -34,6 +34,7 @@ data class StaffAccountEntity(
     val villageName: String,
     val officerName: String,
     val whatsappNumber: String,
+    val googleEmail: String = "",
     val active: Boolean,
     val isWaliHakim: Boolean = false,
     val createdAt: Long,
@@ -68,6 +69,7 @@ data class MarriageScheduleEntity(
     val waliHakimReason: String = "",
     val validationStatus: String,
     val documentsComplete: Boolean,
+    val documentChecklistCodes: String = "",
     val verificationNote: String,
     val verifiedByName: String,
     val createdAt: Long,
@@ -83,7 +85,10 @@ data class ReminderSettingsEntity(
     val remindOneDayBefore: Boolean,
     val remindThreeDaysBefore: Boolean,
     val reminderTime: String,
+    val adminWhatsappNumber: String = "",
+    val adminWhatsappApp: String = WhatsAppAppPreference.AUTO.code,
     val whatsappTemplate: String,
+    val whatsappPenghuluTemplate: String = ReminderSettings.DEFAULT_WA_PENGHULU_TEMPLATE,
     val headOfKuaTitle: String = ReminderSettings.DEFAULT_HEAD_OF_KUA_TITLE,
     val headOfKuaName: String = "",
     val headOfKuaNip: String = "",
@@ -97,6 +102,9 @@ data class ReminderSettingsEntity(
 interface KuaDao {
     @Query("SELECT * FROM villages ORDER BY name ASC")
     fun observeVillages(): Flow<List<VillageEntity>>
+
+    @Query("SELECT * FROM villages ORDER BY name ASC")
+    suspend fun getAllVillagesOnce(): List<VillageEntity>
 
     @Query("SELECT COUNT(*) FROM villages")
     suspend fun countVillages(): Int
@@ -119,6 +127,9 @@ interface KuaDao {
     @Query("SELECT * FROM staff_accounts")
     fun observeStaffAccounts(): Flow<List<StaffAccountEntity>>
 
+    @Query("SELECT * FROM staff_accounts")
+    suspend fun getAllStaffAccountsOnce(): List<StaffAccountEntity>
+
     @Query("SELECT COUNT(*) FROM staff_accounts")
     suspend fun countStaffAccounts(): Int
 
@@ -131,14 +142,23 @@ interface KuaDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertStaffAccount(account: StaffAccountEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertStaffAccounts(accounts: List<StaffAccountEntity>)
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertStaffAccountsIfMissing(accounts: List<StaffAccountEntity>)
 
     @Query("SELECT * FROM staff_accounts WHERE role = :role")
     suspend fun getStaffByRoleOnce(role: String): List<StaffAccountEntity>
 
+    @Query("SELECT * FROM staff_accounts WHERE id = :id LIMIT 1")
+    suspend fun getStaffAccountById(id: String): StaffAccountEntity?
+
     @Query("UPDATE staff_accounts SET isWaliHakim = :isWaliHakim, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateStaffWaliHakim(id: String, isWaliHakim: Boolean, updatedAt: Long)
+
+    @Query("UPDATE staff_accounts SET whatsappNumber = :whatsappNumber, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateStaffWhatsapp(id: String, whatsappNumber: String, updatedAt: Long)
 
     @Query("DELETE FROM staff_accounts WHERE id = :id")
     suspend fun deleteStaffAccount(id: String)
@@ -146,20 +166,28 @@ interface KuaDao {
     @Query("SELECT * FROM marriage_schedules ORDER BY weddingDate ASC, weddingTime ASC")
     fun observeSchedules(): Flow<List<MarriageScheduleEntity>>
 
+    @Query("SELECT * FROM marriage_schedules ORDER BY weddingDate ASC, weddingTime ASC")
+    suspend fun getAllSchedulesOnce(): List<MarriageScheduleEntity>
+
     @Query("SELECT * FROM marriage_schedules WHERE id = :id LIMIT 1")
     suspend fun getScheduleById(id: String): MarriageScheduleEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSchedule(schedule: MarriageScheduleEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSchedules(schedules: List<MarriageScheduleEntity>)
+
     @Query(
         "UPDATE marriage_schedules SET validationStatus = :status, documentsComplete = :docsComplete, " +
-            "verificationNote = :note, verifiedByName = :verifiedByName, updatedAt = :updatedAt WHERE id = :id"
+            "documentChecklistCodes = :checklistCodes, verificationNote = :note, " +
+            "verifiedByName = :verifiedByName, updatedAt = :updatedAt WHERE id = :id"
     )
     suspend fun updateVerification(
         id: String,
         status: String,
         docsComplete: Boolean,
+        checklistCodes: String,
         note: String,
         verifiedByName: String,
         updatedAt: Long
@@ -167,6 +195,15 @@ interface KuaDao {
 
     @Query("DELETE FROM marriage_schedules WHERE id = :id")
     suspend fun deleteSchedule(id: String)
+
+    @Query("UPDATE marriage_schedules SET modinName = :modinName, updatedAt = :updatedAt WHERE modinAccountId = :accountId")
+    suspend fun updateSchedulesModinName(accountId: String, modinName: String, updatedAt: Long)
+
+    @Query("UPDATE marriage_schedules SET penghuluName = :penghuluName, updatedAt = :updatedAt WHERE penghuluAccountId = :accountId")
+    suspend fun updateSchedulesPenghuluName(accountId: String, penghuluName: String, updatedAt: Long)
+
+    @Query("UPDATE marriage_schedules SET waliName = :waliName, updatedAt = :updatedAt WHERE waliHakimAccountId = :accountId AND waliStatus = 'WALI_HAKIM'")
+    suspend fun updateSchedulesWaliHakimName(accountId: String, waliName: String, updatedAt: Long)
 
     @Query("SELECT * FROM reminder_settings WHERE id = :id LIMIT 1")
     fun observeReminderSettings(id: String = ReminderSettings.GLOBAL_DOC_ID): Flow<ReminderSettingsEntity?>
@@ -188,7 +225,7 @@ interface KuaDao {
         MarriageScheduleEntity::class,
         ReminderSettingsEntity::class
     ],
-    version = 5,
+    version = 7,
     exportSchema = false
 )
 abstract class KuaLocalDatabase : RoomDatabase() {
@@ -265,6 +302,31 @@ abstract class KuaLocalDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE reminder_settings ADD COLUMN adminWhatsappNumber TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "ALTER TABLE reminder_settings ADD COLUMN adminWhatsappApp TEXT NOT NULL DEFAULT 'AUTO'"
+                )
+                db.execSQL(
+                    "ALTER TABLE reminder_settings ADD COLUMN whatsappPenghuluTemplate TEXT NOT NULL DEFAULT ''"
+                )
+            }
+        }
+
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE staff_accounts ADD COLUMN googleEmail TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "ALTER TABLE marriage_schedules ADD COLUMN documentChecklistCodes TEXT NOT NULL DEFAULT ''"
+                )
+            }
+        }
+
         fun getInstance(context: Context): KuaLocalDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -272,7 +334,14 @@ abstract class KuaLocalDatabase : RoomDatabase() {
                     KuaLocalDatabase::class.java,
                     "kua_donorojo_local.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_5_6,
+                        MIGRATION_6_7
+                    )
                     .build()
                     .also { INSTANCE = it }
             }

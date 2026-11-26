@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -52,6 +53,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.example.data.DocumentChecklist
 import com.example.data.LocationType
 import com.example.data.MarriageSchedule
 import com.example.data.ReminderSettings
@@ -65,10 +67,28 @@ import com.example.data.WaliStatus
 import com.example.data.formatIndonesianDate
 import com.example.data.generateRegistrationNumber
 import com.example.data.todayIsoDate
+import com.example.ui.components.DispensasiKawinAlertCard
+import com.example.ui.components.DocumentChecklistEditor
+import com.example.ui.components.NikAgeInlineBadge
+import com.example.ui.theme.ErrorContainerLight
+import com.example.ui.theme.ErrorCrimson
+import com.example.ui.theme.OnErrorContainerLight
+import com.example.ui.theme.StatusPendingBg
+import com.example.ui.theme.StatusPendingFg
+import com.example.util.ConflictSeverity
+import com.example.util.NikAgeValidator
+import com.example.util.ScheduleConflictChecker
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+
+private const val BALAI_NIKAH_KUA_ADDRESS = "Balai Nikah KUA Donorojo"
+
+private fun defaultLocationAddress(type: LocationType, village: Village?): String = when (type) {
+    LocationType.KUA -> BALAI_NIKAH_KUA_ADDRESS
+    LocationType.LUAR_KUA -> village?.name.orEmpty()
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,7 +97,8 @@ fun ScheduleFormSheet(
     villages: List<Village>,
     staffAccounts: List<StaffAccount>,
     reminderSettings: ReminderSettings,
-    existingScheduleCount: Int,
+    allSchedules: List<MarriageSchedule>,
+    existingScheduleCount: Int = allSchedules.size,
     isSaving: Boolean,
     onDismiss: () -> Unit,
     onSubmit: (ScheduleDraft, Village) -> Unit
@@ -144,7 +165,13 @@ fun ScheduleFormSheet(
         mutableStateOf(existingSchedule?.resolvedLocationType() ?: LocationType.KUA)
     }
     var locationAddress by remember {
-        mutableStateOf(existingSchedule?.locationAddress ?: "Balai Nikah KUA Donorojo")
+        mutableStateOf(
+            existingSchedule?.locationAddress?.takeIf { it.isNotBlank() }
+                ?: defaultLocationAddress(
+                    existingSchedule?.resolvedLocationType() ?: LocationType.KUA,
+                    initialVillage
+                )
+        )
     }
     val activePenghulus = remember(staffAccounts) {
         staffAccounts.filter { it.resolvedRole() == UserRole.PENGHULU && it.active }
@@ -314,7 +341,12 @@ fun ScheduleFormSheet(
     var validationStatus by remember {
         mutableStateOf(existingSchedule?.resolvedStatus() ?: ValidationStatus.MENUNGGU)
     }
-    var documentsComplete by remember { mutableStateOf(existingSchedule?.documentsComplete ?: false) }
+    var documentChecklist by remember {
+        mutableStateOf(existingSchedule?.resolvedChecklist() ?: DocumentChecklist())
+    }
+    var documentsComplete by remember {
+        mutableStateOf(existingSchedule?.documentsComplete ?: documentChecklist.isAllMandatoryComplete)
+    }
     var verificationNote by remember { mutableStateOf(existingSchedule?.verificationNote ?: "") }
 
     var villageDropdownExpanded by remember { mutableStateOf(false) }
@@ -327,6 +359,7 @@ fun ScheduleFormSheet(
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var validationError by remember { mutableStateOf<String?>(null) }
+    var pendingConflictSubmit by remember { mutableStateOf<Pair<ScheduleDraft, Village>?>(null) }
 
     val selectedModinAccount = remember(selectedModinId, staffAccounts) {
         staffAccounts.firstOrNull { it.id == selectedModinId }
@@ -336,6 +369,56 @@ fun ScheduleFormSheet(
     }
     val selectedWaliHakimAccount = remember(selectedWaliHakimId, staffAccounts) {
         staffAccounts.firstOrNull { it.id == selectedWaliHakimId }
+    }
+
+    val liveConflicts = remember(
+        existingSchedule?.id,
+        weddingDate,
+        weddingTime,
+        locationType,
+        selectedPenghuluId,
+        selectedPenghuluAccount,
+        useManualPenghulu,
+        manualPenghuluName,
+        waliStatus,
+        selectedWaliHakimId,
+        selectedWaliHakimAccount,
+        useManualWaliHakim,
+        manualWaliHakimName,
+        allSchedules
+    ) {
+        val currentPenghuluId = if (useManualPenghulu) "" else selectedPenghuluAccount?.id.orEmpty()
+        val currentPenghuluName = if (useManualPenghulu) manualPenghuluName.trim() else selectedPenghuluAccount?.officerName.orEmpty()
+        val currentWaliHakimId = if (waliStatus == WaliStatus.WALI_HAKIM && !useManualWaliHakim) {
+            selectedWaliHakimAccount?.id.orEmpty()
+        } else {
+            ""
+        }
+        val currentWaliHakimName = if (waliStatus == WaliStatus.WALI_HAKIM) {
+            if (useManualWaliHakim) manualWaliHakimName.trim() else selectedWaliHakimAccount?.officerName.orEmpty()
+        } else {
+            ""
+        }
+        ScheduleConflictChecker.detectConflicts(
+            editingScheduleId = existingSchedule?.id,
+            weddingDate = weddingDate,
+            weddingTime = weddingTime,
+            locationType = locationType,
+            penghuluAccountId = currentPenghuluId,
+            penghuluName = currentPenghuluName,
+            waliStatus = waliStatus,
+            waliHakimAccountId = currentWaliHakimId,
+            waliHakimName = currentWaliHakimName,
+            existingSchedules = allSchedules
+        )
+    }
+
+    val coupleAgeCheck = remember(groomNik, brideNik, weddingDate) {
+        NikAgeValidator.analyzeCouple(
+            groomNik = groomNik,
+            brideNik = brideNik,
+            weddingDateIso = weddingDate
+        )
     }
 
     ModalBottomSheet(
@@ -414,7 +497,22 @@ fun ScheduleFormSheet(
                                 }
                             },
                             onClick = {
+                                val previousVillage = selectedVillage
                                 selectedVillage = village
+                                if (locationType == LocationType.LUAR_KUA) {
+                                    val trimmed = locationAddress.trim()
+                                    val isAutoAddress = trimmed.isEmpty() ||
+                                        trimmed.equals(BALAI_NIKAH_KUA_ADDRESS, ignoreCase = true) ||
+                                        villages.any { it.name.equals(trimmed, ignoreCase = true) }
+                                    locationAddress = when {
+                                        isAutoAddress -> village.name
+                                        previousVillage != null &&
+                                            trimmed.startsWith(previousVillage.name, ignoreCase = true) -> {
+                                            village.name + trimmed.substring(previousVillage.name.length)
+                                        }
+                                        else -> village.name
+                                    }
+                                }
                                 val firstForVillage = staffAccounts.firstOrNull {
                                     it.resolvedRole() == UserRole.MODIN && it.villageId == village.code && it.active
                                 }
@@ -542,15 +640,23 @@ fun ScheduleFormSheet(
                     .testTag("form_groom_name")
             )
 
-            OutlinedTextField(
-                value = groomNik,
-                onValueChange = { groomNik = it.filter { c -> c.isDigit() }.take(16) },
-                label = { Text("NIK Calon Suami (Opsional)") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedTextField(
+                    value = groomNik,
+                    onValueChange = { groomNik = it.filter { c -> c.isDigit() }.take(16) },
+                    label = { Text("NIK Calon Suami (16 Digit — Hitung Usia Otomatis)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("form_groom_nik")
+                )
+                NikAgeInlineBadge(
+                    analysis = coupleAgeCheck.groom,
+                    roleLabel = "Calon Suami"
+                )
+            }
 
             OutlinedTextField(
                 value = brideName,
@@ -563,15 +669,23 @@ fun ScheduleFormSheet(
                     .testTag("form_bride_name")
             )
 
-            OutlinedTextField(
-                value = brideNik,
-                onValueChange = { brideNik = it.filter { c -> c.isDigit() }.take(16) },
-                label = { Text("NIK Calon Istri (Opsional)") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedTextField(
+                    value = brideNik,
+                    onValueChange = { brideNik = it.filter { c -> c.isDigit() }.take(16) },
+                    label = { Text("NIK Calon Istri (16 Digit — Hitung Usia Otomatis)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("form_bride_nik")
+                )
+                NikAgeInlineBadge(
+                    analysis = coupleAgeCheck.bride,
+                    roleLabel = "Calon Istri"
+                )
+            }
 
             // Date and Time Row
             Row(
@@ -631,10 +745,9 @@ fun ScheduleFormSheet(
                             .height(48.dp)
                             .clickable {
                                 locationType = type
-                                if (type == LocationType.KUA && locationAddress.isBlank()) {
-                                    locationAddress = "Balai Nikah KUA Donorojo"
-                                }
+                                locationAddress = defaultLocationAddress(type, selectedVillage)
                             }
+                            .testTag("form_location_type_${type.code.lowercase()}")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
@@ -1149,6 +1262,67 @@ fun ScheduleFormSheet(
                 }
             }
 
+            if (liveConflicts.isNotEmpty()) {
+                val hasCritical = liveConflicts.any { it.severity == ConflictSeverity.CRITICAL }
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (hasCritical) ErrorContainerLight else StatusPendingBg,
+                    border = BorderStroke(
+                        1.2.dp,
+                        if (hasCritical) ErrorCrimson.copy(alpha = 0.45f) else StatusPendingFg.copy(alpha = 0.45f)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("form_conflict_warning_card")
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.WarningAmber,
+                                contentDescription = null,
+                                tint = if (hasCritical) ErrorCrimson else StatusPendingFg,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = "Deteksi Bentrok Jadwal (${liveConflicts.size})",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (hasCritical) OnErrorContainerLight else StatusPendingFg
+                            )
+                        }
+                        liveConflicts.forEach { conflict ->
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "• ${conflict.title}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (conflict.severity == ConflictSeverity.CRITICAL) {
+                                        OnErrorContainerLight
+                                    } else {
+                                        StatusPendingFg
+                                    }
+                                )
+                                Text(
+                                    text = conflict.detail,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (conflict.severity == ConflictSeverity.CRITICAL) {
+                                        OnErrorContainerLight.copy(alpha = 0.88f)
+                                    } else {
+                                        StatusPendingFg.copy(alpha = 0.88f)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Validation Status selector
             Box(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
@@ -1181,35 +1355,27 @@ fun ScheduleFormSheet(
                 }
             }
 
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Berkas N1–N4 Lengkap",
-                            style = MaterialTheme.typography.titleSmall
-                        )
-                        Text(
-                            text = "Tandai jika persyaratan administrasi nikah sudah terpenuhi",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+            if (coupleAgeCheck.requiresDispensasiKawin) {
+                DispensasiKawinAlertCard(
+                    coupleAgeCheck = coupleAgeCheck,
+                    onApplyNote = {
+                        val rec = coupleAgeCheck.recommendedNoteText()
+                        verificationNote = when {
+                            verificationNote.isBlank() -> rec
+                            verificationNote.contains("Dispensasi Kawin", ignoreCase = true) -> verificationNote
+                            else -> "${verificationNote.trim()}\n$rec".take(500)
+                        }
                     }
-                    Switch(
-                        checked = documentsComplete,
-                        onCheckedChange = { documentsComplete = it }
-                    )
-                }
+                )
             }
+
+            DocumentChecklistEditor(
+                checklist = documentChecklist,
+                onChange = { updated ->
+                    documentChecklist = updated
+                    documentsComplete = updated.isAllMandatoryComplete
+                }
+            )
 
             OutlinedTextField(
                 value = verificationNote,
@@ -1301,42 +1467,45 @@ fun ScheduleFormSheet(
                                 validationError = "Sebab / alasan Wali Hakim wajib diisi."
                             else -> {
                                 validationError = null
-                                onSubmit(
-                                    ScheduleDraft(
-                                        id = existingSchedule?.id,
-                                        registrationNumber = regNumber.trim(),
-                                        groomName = groomName.trim(),
-                                        groomNik = groomNik.trim(),
-                                        brideName = brideName.trim(),
-                                        brideNik = brideNik.trim(),
-                                        villageId = village.code,
-                                        villageName = village.name,
-                                        modinAccountId = resolvedModinId,
-                                        modinName = resolvedModinName,
-                                        weddingDate = weddingDate,
-                                        weddingTime = weddingTime,
-                                        locationType = locationType,
-                                        locationAddress = locationAddress.trim(),
-                                        penghuluAccountId = resolvedPenghuluId,
-                                        penghuluName = resolvedPenghuluName,
-                                        waliStatus = waliStatus,
-                                        waliRelationship = resolvedWaliRel,
-                                        waliName = resolvedWaliName,
-                                        waliBin = if (waliStatus == WaliStatus.WALI_NASAB) waliBin.trim() else "",
-                                        waliNik = if (waliStatus == WaliStatus.WALI_NASAB) waliNik.trim() else "",
-                                        waliAddress = if (waliStatus == WaliStatus.WALI_NASAB) {
-                                            waliNasabAddress.trim()
-                                        } else {
-                                            waliHakimNote.trim()
-                                        },
-                                        waliHakimAccountId = resolvedWaliHakimId,
-                                        waliHakimReason = resolvedWaliReason,
-                                        validationStatus = validationStatus,
-                                        documentsComplete = documentsComplete,
-                                        verificationNote = verificationNote.trim()
-                                    ),
-                                    village
+                                val draft = ScheduleDraft(
+                                    id = existingSchedule?.id,
+                                    registrationNumber = regNumber.trim(),
+                                    groomName = groomName.trim(),
+                                    groomNik = groomNik.trim(),
+                                    brideName = brideName.trim(),
+                                    brideNik = brideNik.trim(),
+                                    villageId = village.code,
+                                    villageName = village.name,
+                                    modinAccountId = resolvedModinId,
+                                    modinName = resolvedModinName,
+                                    weddingDate = weddingDate,
+                                    weddingTime = weddingTime,
+                                    locationType = locationType,
+                                    locationAddress = locationAddress.trim(),
+                                    penghuluAccountId = resolvedPenghuluId,
+                                    penghuluName = resolvedPenghuluName,
+                                    waliStatus = waliStatus,
+                                    waliRelationship = resolvedWaliRel,
+                                    waliName = resolvedWaliName,
+                                    waliBin = if (waliStatus == WaliStatus.WALI_NASAB) waliBin.trim() else "",
+                                    waliNik = if (waliStatus == WaliStatus.WALI_NASAB) waliNik.trim() else "",
+                                    waliAddress = if (waliStatus == WaliStatus.WALI_NASAB) {
+                                        waliNasabAddress.trim()
+                                    } else {
+                                        waliHakimNote.trim()
+                                    },
+                                    waliHakimAccountId = resolvedWaliHakimId,
+                                    waliHakimReason = resolvedWaliReason,
+                                    validationStatus = validationStatus,
+                                    documentsComplete = documentsComplete || documentChecklist.isAllMandatoryComplete,
+                                    documentChecklist = documentChecklist,
+                                    verificationNote = verificationNote.trim()
                                 )
+                                if (liveConflicts.isNotEmpty()) {
+                                    pendingConflictSubmit = draft to village
+                                } else {
+                                    onSubmit(draft, village)
+                                }
                             }
                         }
                     },
@@ -1411,6 +1580,55 @@ fun ScheduleFormSheet(
             },
             dismissButton = {
                 TextButton(onClick = { showTimePicker = false }) { Text("Batal") }
+            }
+        )
+    }
+
+    pendingConflictSubmit?.let { (draft, village) ->
+        AlertDialog(
+            onDismissRequest = { pendingConflictSubmit = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.WarningAmber,
+                    contentDescription = null,
+                    tint = StatusPendingFg
+                )
+            },
+            title = { Text("Jadwal Berpotensi Bentrok") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Ditemukan ${liveConflicts.size} potensi bentrok pada tanggal ${formatIndonesianDate(draft.weddingDate)} pukul ${draft.weddingTime} WIB:",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    liveConflicts.take(3).forEach { conflict ->
+                        Text(
+                            text = "• ${conflict.title}: ${conflict.detail}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    Text(
+                        text = "Apakah Anda yakin ingin tetap menyimpan jadwal ini?",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingConflictSubmit = null
+                        onSubmit(draft, village)
+                    },
+                    modifier = Modifier.testTag("confirm_save_with_conflict_button")
+                ) {
+                    Text("Tetap Simpan")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingConflictSubmit = null }) {
+                    Text("Periksa Lagi")
+                }
             }
         )
     }

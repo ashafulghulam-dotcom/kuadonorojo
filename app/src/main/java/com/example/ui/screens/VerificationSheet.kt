@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.Button
@@ -26,8 +27,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,9 +40,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.data.DocumentChecklist
 import com.example.data.MarriageSchedule
 import com.example.data.ValidationStatus
+import com.example.ui.components.DispensasiKawinAlertCard
+import com.example.ui.components.DocumentChecklistEditor
 import com.example.ui.components.visuals
+import com.example.util.NikAgeValidator
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,11 +54,14 @@ fun VerificationSheet(
     schedule: MarriageSchedule,
     isSaving: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (ValidationStatus, Boolean, String) -> Unit
+    onConfirm: (ValidationStatus, DocumentChecklist, Boolean, String) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedStatus by remember { mutableStateOf(schedule.resolvedStatus()) }
-    var documentsComplete by remember { mutableStateOf(schedule.documentsComplete) }
+    var checklist by remember { mutableStateOf(schedule.resolvedChecklist()) }
+    var documentsComplete by remember {
+        mutableStateOf(schedule.documentsComplete || checklist.isAllMandatoryComplete)
+    }
     var note by remember { mutableStateOf(schedule.verificationNote) }
 
     ModalBottomSheet(
@@ -81,35 +89,34 @@ fun VerificationSheet(
                 fontWeight = FontWeight.SemiBold
             )
 
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Kelengkapan Berkas N1–N4",
-                            style = MaterialTheme.typography.titleSmall
-                        )
-                        Text(
-                            text = "Pastikan KTP, KK, Akta, dan rekomendasi nikah telah sesuai",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = documentsComplete,
-                        onCheckedChange = { documentsComplete = it }
-                    )
-                }
+            val coupleAgeCheck = remember(schedule.groomNik, schedule.brideNik, schedule.weddingDate) {
+                NikAgeValidator.analyzeCouple(
+                    groomNik = schedule.groomNik,
+                    brideNik = schedule.brideNik,
+                    weddingDateIso = schedule.weddingDate
+                )
             }
+            if (coupleAgeCheck.requiresDispensasiKawin) {
+                DispensasiKawinAlertCard(
+                    coupleAgeCheck = coupleAgeCheck,
+                    onApplyNote = {
+                        val rec = coupleAgeCheck.recommendedNoteText()
+                        note = when {
+                            note.isBlank() -> rec
+                            note.contains("Dispensasi Kawin", ignoreCase = true) -> note
+                            else -> "${note.trim()}\n$rec".take(500)
+                        }
+                    }
+                )
+            }
+
+            DocumentChecklistEditor(
+                checklist = checklist,
+                onChange = { updated ->
+                    checklist = updated
+                    documentsComplete = updated.isAllMandatoryComplete
+                }
+            )
 
             Text(
                 text = "Pilih Status Validasi",
@@ -133,6 +140,9 @@ fun VerificationSheet(
                             .clickable {
                                 selectedStatus = status
                                 if (status == ValidationStatus.TERVERIFIKASI || status == ValidationStatus.SELESAI) {
+                                    if (!checklist.isAllMandatoryComplete) {
+                                        checklist = DocumentChecklist.allComplete(includeOptional = checklist.tambahan)
+                                    }
                                     documentsComplete = true
                                 }
                             }
@@ -162,6 +172,32 @@ fun VerificationSheet(
                                 )
                             }
                         }
+                    }
+                }
+            }
+
+            val missingLabels = remember(checklist) { checklist.missingMandatoryLabels() }
+            if (missingLabels.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = {
+                            note = "Berkas belum lengkap: ${missingLabels.joinToString(", ")}. Mohon segera dilengkapi sebelum hari akad."
+                        },
+                        modifier = Modifier.testTag("verify_fill_missing_note_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AutoFixHigh,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Isi Catatan Berkas Kurang (${missingLabels.size})",
+                            style = MaterialTheme.typography.labelMedium
+                        )
                     }
                 }
             }
@@ -197,7 +233,14 @@ fun VerificationSheet(
                 }
 
                 Button(
-                    onClick = { onConfirm(selectedStatus, documentsComplete, note) },
+                    onClick = {
+                        onConfirm(
+                            selectedStatus,
+                            checklist,
+                            documentsComplete || checklist.isAllMandatoryComplete,
+                            note
+                        )
+                    },
                     enabled = !isSaving,
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier

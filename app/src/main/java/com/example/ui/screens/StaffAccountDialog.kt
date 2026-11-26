@@ -58,6 +58,7 @@ fun AddModinAccountDialog(
         password: String,
         officerName: String,
         whatsappNumber: String,
+        googleEmail: String,
         active: Boolean
     ) -> Unit
 ) {
@@ -87,6 +88,7 @@ fun AddModinAccountDialog(
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var whatsappNumber by remember { mutableStateOf("") }
+    var googleEmail by remember { mutableStateOf("") }
     var active by remember { mutableStateOf(true) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
 
@@ -221,6 +223,20 @@ fun AddModinAccountDialog(
                         .testTag("add_modin_whatsapp")
                 )
 
+                OutlinedTextField(
+                    value = googleEmail,
+                    onValueChange = { googleEmail = it.trim().lowercase().take(120) },
+                    label = { Text("Email Google Petugas (Sinkron Antar-HP)") },
+                    placeholder = { Text("nama@gmail.com (Opsional)") },
+                    supportingText = { Text("Isi agar data KUA tersinkron otomatis ke HP Modin ini.") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("add_modin_google_email")
+                )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -272,6 +288,7 @@ fun AddModinAccountDialog(
                                 password,
                                 cleanName,
                                 whatsappNumber.trim(),
+                                googleEmail.trim().lowercase(),
                                 active
                             )
                         }
@@ -309,6 +326,7 @@ fun AddPenghuluAccountDialog(
         password: String,
         officerName: String,
         whatsappNumber: String,
+        googleEmail: String,
         active: Boolean,
         isWaliHakim: Boolean
     ) -> Unit
@@ -329,6 +347,7 @@ fun AddPenghuluAccountDialog(
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var whatsappNumber by remember { mutableStateOf("") }
+    var googleEmail by remember { mutableStateOf("") }
     var active by remember { mutableStateOf(true) }
     var isWaliHakim by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
@@ -410,6 +429,20 @@ fun AddPenghuluAccountDialog(
                         .testTag("add_penghulu_whatsapp")
                 )
 
+                OutlinedTextField(
+                    value = googleEmail,
+                    onValueChange = { googleEmail = it.trim().lowercase().take(120) },
+                    label = { Text("Email Google Petugas (Sinkron Antar-HP)") },
+                    placeholder = { Text("nama@gmail.com (Opsional)") },
+                    supportingText = { Text("Isi agar jadwal tersinkron otomatis ke HP Penghulu ini.") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("add_penghulu_google_email")
+                )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -478,6 +511,7 @@ fun AddPenghuluAccountDialog(
                                 password,
                                 cleanName,
                                 whatsappNumber.trim(),
+                                googleEmail.trim().lowercase(),
                                 active,
                                 isWaliHakim
                             )
@@ -517,6 +551,7 @@ fun StaffAccountDialog(
         newPassword: String?,
         officerName: String,
         whatsappNumber: String,
+        googleEmail: String,
         active: Boolean,
         newVillage: Village?,
         isWaliHakim: Boolean
@@ -537,6 +572,7 @@ fun StaffAccountDialog(
     var passwordVisible by remember { mutableStateOf(false) }
     var officerName by remember { mutableStateOf(account.officerName) }
     var whatsappNumber by remember { mutableStateOf(account.whatsappNumber) }
+    var googleEmail by remember { mutableStateOf(account.googleEmail) }
     var active by remember { mutableStateOf(account.active) }
     var isWaliHakim by remember { mutableStateOf(account.isWaliHakim) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
@@ -645,14 +681,49 @@ fun StaffAccountDialog(
                 OutlinedTextField(
                     value = whatsappNumber,
                     onValueChange = { whatsappNumber = it.take(30) },
-                    label = { Text("Nomor WhatsApp (Smart Reminder WA)") },
+                    label = {
+                        Text(
+                            if (isAdminRole) {
+                                "Nomor WA Admin KUA (Pengirim Smart Reminder)"
+                            } else {
+                                "Nomor WhatsApp (Smart Reminder WA)"
+                            }
+                        )
+                    },
                     placeholder = { Text("08xxxxxxxxxx") },
+                    supportingText = if (isAdminRole) {
+                        { Text("Digunakan sebagai nomor pengirim Smart Reminder WA ke Modin & Penghulu.") }
+                    } else {
+                        null
+                    },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("edit_account_whatsapp")
+                )
+
+                OutlinedTextField(
+                    value = googleEmail,
+                    onValueChange = { googleEmail = it.trim().lowercase().take(120) },
+                    label = { Text("Email Google (Sinkron Cloud Antar-HP)") },
+                    placeholder = { Text("nama@gmail.com (Opsional)") },
+                    supportingText = {
+                        Text(
+                            if (isAdminRole) {
+                                "Opsional. Akun Google Admin otomatis menjadi pemilik ruang cloud."
+                            } else {
+                                "Isi email Google HP petugas agar jadwal tersinkron real-time."
+                            }
+                        )
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("edit_account_google_email")
                 )
 
                 if (!isAdminRole) {
@@ -722,6 +793,7 @@ fun StaffAccountDialog(
                                 newPassword.takeIf { it.isNotBlank() },
                                 cleanName,
                                 whatsappNumber.trim(),
+                                googleEmail.trim().lowercase(),
                                 if (isAdminRole) true else active,
                                 if (isModinRole) selectedVillage else null,
                                 if (isPenghuluRole) isWaliHakim else false

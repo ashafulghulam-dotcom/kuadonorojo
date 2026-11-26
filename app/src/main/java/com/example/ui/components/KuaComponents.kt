@@ -63,6 +63,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -98,6 +99,7 @@ import com.example.ui.theme.StatusRevisionBg
 import com.example.ui.theme.StatusRevisionFg
 import com.example.ui.theme.StatusVerifiedBg
 import com.example.ui.theme.StatusVerifiedFg
+import com.example.util.NikAgeValidator
 
 data class StatusVisuals(
     val bgColor: Color,
@@ -377,6 +379,7 @@ fun TodayWeddingsSpotlightSection(
     isAdminMode: Boolean,
     onScheduleClick: (MarriageSchedule) -> Unit,
     onSendWhatsApp: ((MarriageSchedule) -> Unit)? = null,
+    onSendWhatsAppPenghulu: ((MarriageSchedule) -> Unit)? = null,
     onSendPhoneNotif: ((MarriageSchedule) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -515,33 +518,15 @@ fun TodayWeddingsSpotlightSection(
                                     overflow = TextOverflow.Ellipsis
                                 )
 
-                                if (isAdminMode && (onSendWhatsApp != null || onSendPhoneNotif != null)) {
+                                if (isAdminMode && (onSendWhatsApp != null || onSendWhatsAppPenghulu != null || onSendPhoneNotif != null)) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        if (onSendPhoneNotif != null) {
-                                            OutlinedButton(
-                                                onClick = { onSendPhoneNotif(item) },
-                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                                shape = RoundedCornerShape(10.dp),
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .height(38.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.NotificationsActive,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(15.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(5.dp))
-                                                Text("Notif HP", style = MaterialTheme.typography.labelSmall)
-                                            }
-                                        }
                                         if (onSendWhatsApp != null) {
                                             Button(
                                                 onClick = { onSendWhatsApp(item) },
-                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                                 shape = RoundedCornerShape(10.dp),
                                                 modifier = Modifier
                                                     .weight(1f)
@@ -550,10 +535,57 @@ fun TodayWeddingsSpotlightSection(
                                                 Icon(
                                                     imageVector = Icons.Filled.Send,
                                                     contentDescription = null,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    "WA Modin",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                        if (onSendWhatsAppPenghulu != null) {
+                                            Button(
+                                                onClick = { onSendWhatsAppPenghulu(item) },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                shape = RoundedCornerShape(10.dp),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(38.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Send,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    "WA Penghulu",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                        if (onSendPhoneNotif != null) {
+                                            OutlinedButton(
+                                                onClick = { onSendPhoneNotif(item) },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                shape = RoundedCornerShape(10.dp),
+                                                modifier = Modifier
+                                                    .height(38.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.NotificationsActive,
+                                                    contentDescription = "Notif HP",
                                                     modifier = Modifier.size(15.dp)
                                                 )
-                                                Spacer(modifier = Modifier.width(5.dp))
-                                                Text("WA Modin", style = MaterialTheme.typography.labelSmall)
                                             }
                                         }
                                     }
@@ -922,6 +954,18 @@ fun ScheduleCard(
                 )
             }
 
+            val coupleAgeCheck = remember(schedule.groomNik, schedule.brideNik, schedule.weddingDate) {
+                NikAgeValidator.analyzeCouple(
+                    groomNik = schedule.groomNik,
+                    brideNik = schedule.brideNik,
+                    weddingDateIso = schedule.weddingDate
+                )
+            }
+            if (coupleAgeCheck.requiresDispensasiKawin) {
+                Spacer(modifier = Modifier.height(10.dp))
+                DispensasiKawinCompactChip()
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
             ValidationProgressTimeline(status = status)
 
@@ -956,11 +1000,21 @@ fun ScheduleCard(
                 Spacer(modifier = Modifier.height(12.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
                 Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = if (schedule.documentsComplete) "Berkas N1–N4 Lengkap" else "Berkas Belum Lengkap",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (schedule.documentsComplete) StatusVerifiedFg else StatusPendingFg
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (schedule.documentsComplete) "Berkas N1–N4 Lengkap" else "Berkas Belum Lengkap",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (schedule.documentsComplete) StatusVerifiedFg else StatusPendingFg
+                    )
+                    DocumentChecklistCompactPill(
+                        checklist = schedule.resolvedChecklist(),
+                        documentsComplete = schedule.documentsComplete
+                    )
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1042,6 +1096,17 @@ fun ScheduleCard(
                         }
                     }
                 }
+            } else {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    DocumentChecklistCompactPill(
+                        checklist = schedule.resolvedChecklist(),
+                        documentsComplete = schedule.documentsComplete
+                    )
+                }
             }
         }
     }
@@ -1083,6 +1148,7 @@ fun ScheduleDetailSheet(
     onEditClick: (() -> Unit)? = null,
     onDeleteClick: (() -> Unit)? = null,
     onSendWhatsApp: (() -> Unit)? = null,
+    onSendWhatsAppPenghulu: (() -> Unit)? = null,
     onSendPhoneNotif: (() -> Unit)? = null,
     onAddToCalendar: (() -> Unit)? = null
 ) {
@@ -1131,6 +1197,18 @@ fun ScheduleDetailSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            val detailAgeCheck = remember(schedule.groomNik, schedule.brideNik, schedule.weddingDate) {
+                NikAgeValidator.analyzeCouple(
+                    groomNik = schedule.groomNik,
+                    brideNik = schedule.brideNik,
+                    weddingDateIso = schedule.weddingDate
+                )
+            }
+            if (detailAgeCheck.requiresDispensasiKawin) {
+                Spacer(modifier = Modifier.height(12.dp))
+                DispensasiKawinAlertCard(coupleAgeCheck = detailAgeCheck)
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Spacer(modifier = Modifier.height(14.dp))
@@ -1175,15 +1253,26 @@ fun ScheduleDetailSheet(
                 }
             }
             if (schedule.groomNik.isNotBlank()) {
-                DetailRow("NIK Calon Suami", schedule.groomNik)
+                val groomAgeText = detailAgeCheck.groom
+                    ?.takeIf { it.isValidDate }
+                    ?.let { " (${it.formattedAge()}${if (it.requiresDispensasiKawin) " — < 19 thn" else ""})" }
+                    .orEmpty()
+                DetailRow("NIK Calon Suami", "${schedule.groomNik}$groomAgeText")
             }
             if (schedule.brideNik.isNotBlank()) {
-                DetailRow("NIK Calon Istri", schedule.brideNik)
+                val brideAgeText = detailAgeCheck.bride
+                    ?.takeIf { it.isValidDate }
+                    ?.let { " (${it.formattedAge()}${if (it.requiresDispensasiKawin) " — < 19 thn" else ""})" }
+                    .orEmpty()
+                DetailRow("NIK Calon Istri", "${schedule.brideNik}$brideAgeText")
             }
             DetailRow(
                 "Kelengkapan Berkas",
                 if (schedule.documentsComplete) "Lengkap (N1–N4 Terverifikasi)" else "Belum Lengkap"
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            DocumentChecklistReadOnlyCard(checklist = schedule.resolvedChecklist())
+            Spacer(modifier = Modifier.height(6.dp))
             if (schedule.verifiedByName.isNotBlank()) {
                 DetailRow("Diverifikasi Oleh", schedule.verifiedByName)
             }
@@ -1231,37 +1320,57 @@ fun ScheduleDetailSheet(
                     Text("Lakukan Verifikasi Akhir")
                 }
 
-                if (onSendWhatsApp != null || onSendPhoneNotif != null) {
+                if (onSendWhatsApp != null || onSendWhatsAppPenghulu != null || onSendPhoneNotif != null) {
                     Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        if (onSendPhoneNotif != null) {
-                            OutlinedButton(
-                                onClick = onSendPhoneNotif,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                shape = RoundedCornerShape(14.dp)
-                            ) {
-                                Icon(Icons.Filled.NotificationsActive, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Notif HP")
+                    if (onSendWhatsApp != null || onSendWhatsAppPenghulu != null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            if (onSendWhatsApp != null) {
+                                OutlinedButton(
+                                    onClick = onSendWhatsApp,
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp)
+                                        .testTag("detail_send_wa_modin_button"),
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Icon(Icons.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("WA Modin", maxLines = 1)
+                                }
+                            }
+                            if (onSendWhatsAppPenghulu != null) {
+                                OutlinedButton(
+                                    onClick = onSendWhatsAppPenghulu,
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(48.dp)
+                                        .testTag("detail_send_wa_penghulu_button"),
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Icon(Icons.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("WA Penghulu", maxLines = 1)
+                                }
                             }
                         }
-                        if (onSendWhatsApp != null) {
-                            OutlinedButton(
-                                onClick = onSendWhatsApp,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                shape = RoundedCornerShape(14.dp)
-                            ) {
-                                Icon(Icons.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Kirim WA")
-                            }
+                    }
+                    if (onSendPhoneNotif != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = onSendPhoneNotif,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(Icons.Filled.NotificationsActive, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Kirim Notif HP")
                         }
                     }
                 }

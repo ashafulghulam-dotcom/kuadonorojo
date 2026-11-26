@@ -27,10 +27,12 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -63,6 +65,7 @@ import com.example.R
 import com.example.data.MarriageSchedule
 import com.example.data.ReminderSettings
 import com.example.data.Village
+import com.example.util.KuaDataTransferManager
 import com.example.util.MonthlyReportConfig
 import com.example.util.MonthlyReportPdfGenerator
 import com.example.util.PdfSaveResult
@@ -160,6 +163,33 @@ fun MonthlyReportSheet(
                 onDismiss()
             }.onFailure { err ->
                 onPostMessage(err.localizedMessage ?: "Gagal menyimpan file PDF.")
+            }
+        }
+    }
+
+    val createCsvLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        isGenerating = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bytes = KuaDataTransferManager.buildMonthlyCsvBytes(
+                        config = reportConfig,
+                        allSchedules = schedules
+                    )
+                    KuaDataTransferManager.writeBytesToUri(context, uri, bytes).getOrThrow()
+                }
+            }
+            isGenerating = false
+            result.onSuccess {
+                onPostMessage(
+                    "Ekspor Excel (CSV) ${MonthlyReportPdfGenerator.monthName(selectedMonth)} $selectedYear berhasil disimpan."
+                )
+                onDismiss()
+            }.onFailure { err ->
+                onPostMessage(err.localizedMessage ?: "Gagal menyimpan file CSV Excel.")
             }
         }
     }
@@ -631,6 +661,33 @@ fun MonthlyReportSheet(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(stringResource(R.string.action_save_as_folder))
                 }
+            }
+
+            // Excel (CSV) Export Action
+            FilledTonalButton(
+                onClick = {
+                    if (isGenerating) return@FilledTonalButton
+                    createCsvLauncher.launch(
+                        KuaDataTransferManager.suggestedCsvFileName(reportConfig)
+                    )
+                },
+                enabled = !isGenerating,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("btn_export_monthly_csv")
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.TableChart,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.action_export_csv),
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }

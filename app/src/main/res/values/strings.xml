@@ -32,4 +32,17 @@
     <string name="cd_monthly_report">Buka menu download laporan bulanan A4</string>
     <string name="cd_report_prev_year">Tahun sebelumnya</string>
     <string name="cd_report_next_year">Tahun berikutnya</string>
+    <string name="action_export_csv">Ekspor Excel (CSV)</string>
+    <string name="action_backup_json">Backup Data (JSON)</string>
+    <string name="action_restore_json">Pulihkan Data (Restore)</string>
+    <string name="auth_google_cloud_title">Sinkronisasi Online KUA Donorojo</string>
+    <string name="auth_google_cloud_subtitle">Hubungkan akun Google Anda untuk menyinkronkan jadwal nikah, akun petugas, dan verifikasi berkas secara real-time antar HP.</string>
+    <string name="action_sign_in_google_cloud">Masuk dengan Google</string>
+    <string name="cd_calendar_prev_month">Bulan sebelumnya</string>
+    <string name="cd_calendar_next_month">Bulan berikutnya</string>
+    <string name="wa_digest_card_title">Rekap Jadwal WA Grup</string>
+    <string name="wa_digest_card_subtitle">Salin atau bagikan 1 klik ke grup koordinasi KUA, Penghulu &amp; Modin</string>
+    <string name="action_share_wa_group">Kirim WA Grup</string>
+    <string name="action_copy_wa_text">Salin Teks</string>
+    <string name="cd_preview_wa_digest">Pratinjau teks rekap WhatsApp</string>
 </resources>

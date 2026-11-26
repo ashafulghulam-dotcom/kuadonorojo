@@ -36,6 +36,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
@@ -43,8 +44,9 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -52,6 +54,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -65,7 +68,6 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -77,6 +79,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
@@ -92,13 +95,17 @@ private const val KUA_TIKTOK_URL = "https://www.tiktok.com/@kua.donorojo?_r=1&_t
 fun StaffLoginScreen(
     staffAccountsState: UiState<List<StaffAccount>>,
     loginError: String?,
+    rememberSessionDefault: Boolean = true,
+    connectedGoogleEmail: String = "",
+    onSignOutGoogle: () -> Unit = {},
     onClearError: () -> Unit,
-    onLogin: (username: String, password: String) -> Unit
+    onLogin: (username: String, password: String, rememberSession: Boolean) -> Unit
 ) {
     val context = LocalContext.current
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+    var rememberSession by remember(rememberSessionDefault) { mutableStateOf(rememberSessionDefault) }
 
     val isLoadingAccounts = staffAccountsState is UiState.Loading
     val primaryColor = MaterialTheme.colorScheme.primary
@@ -134,20 +141,6 @@ fun StaffLoginScreen(
                     center = Offset(size.width * 0.88f, size.height * 0.08f),
                     radius = size.width * 0.55f
                 )
-                // Ultra-fine decorative architectural rings behind crest
-                val crestCenter = Offset(size.width * 0.5f, size.height * 0.15f)
-                drawCircle(
-                    color = EmeraldPrimary.copy(alpha = 0.055f),
-                    radius = size.width * 0.30f,
-                    center = crestCenter,
-                    style = Stroke(width = 1.dp.toPx())
-                )
-                drawCircle(
-                    color = ChampagneAccent.copy(alpha = 0.06f),
-                    radius = size.width * 0.44f,
-                    center = crestCenter,
-                    style = Stroke(width = 1.dp.toPx())
-                )
             }
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .imePadding(),
@@ -162,22 +155,22 @@ fun StaffLoginScreen(
                 .navigationBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(30.dp))
 
-            // Official KUA Emblem directly on clean white canvas (no box background)
+            // Official KUA Emblem directly on clean white canvas
             Image(
                 painter = painterResource(id = R.drawable.ic_logo_kua_resmi),
                 contentDescription = stringResource(R.string.cd_app_emblem),
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.size(92.dp)
+                modifier = Modifier.size(64.dp)
             )
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             Text(
                 text = "KUA DONOROJO",
                 style = MaterialTheme.typography.headlineLarge.copy(
-                    fontSize = 27.sp,
+                    fontSize = 26.sp,
                     letterSpacing = 0.8.sp
                 ),
                 fontWeight = FontWeight.ExtraBold,
@@ -185,13 +178,16 @@ fun StaffLoginScreen(
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(5.dp))
 
             Text(
-                text = "Portal Layanan Jadwal Nikah, Penghulu & Modin Desa",
-                style = MaterialTheme.typography.bodyMedium,
+                text = "Kementerian Agama Kabupaten Jepara",
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis
             )
 
             Spacer(modifier = Modifier.height(26.dp))
@@ -227,15 +223,18 @@ fun StaffLoginScreen(
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
-                                text = "Masuk Akun Petugas",
+                                text = "Masuk Akun",
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Gunakan username dan password resmi Admin KUA, Penghulu, atau Modin Desa.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                text = "Silahkan Masuk Aplikasi Dengan Akun Anda",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 
@@ -312,7 +311,7 @@ fun StaffLoginScreen(
                                 imeAction = ImeAction.Done
                             ),
                             keyboardActions = KeyboardActions(
-                                onDone = { onLogin(username, password) }
+                                onDone = { onLogin(username, password, rememberSession) }
                             ),
                             shape = RoundedCornerShape(16.dp),
                             colors = OutlinedTextFieldDefaults.colors(
@@ -326,6 +325,28 @@ fun StaffLoginScreen(
                                 .fillMaxWidth()
                                 .testTag("password_input")
                         )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { rememberSession = !rememberSession }
+                                .testTag("remember_session_row"),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = rememberSession,
+                                onCheckedChange = { rememberSession = it },
+                                colors = CheckboxDefaults.colors(checkedColor = primaryColor),
+                                modifier = Modifier.testTag("remember_session_checkbox")
+                            )
+                            Text(
+                                text = "Tetap masuk di perangkat ini",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
 
                         AnimatedVisibility(
                             visible = loginError != null,
@@ -362,7 +383,7 @@ fun StaffLoginScreen(
 
                         // Premium Gradient CTA Button
                         Button(
-                            onClick = { onLogin(username, password) },
+                            onClick = { onLogin(username, password, rememberSession) },
                             enabled = !isLoadingAccounts,
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
@@ -432,8 +453,57 @@ fun StaffLoginScreen(
                 }
             }
 
+            if (connectedGoogleEmail.isNotBlank()) {
+                Spacer(modifier = Modifier.height(14.dp))
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFFF6FAF8),
+                    border = BorderStroke(1.dp, outlineColor.copy(alpha = 0.7f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.CloudDone,
+                                contentDescription = null,
+                                tint = primaryColor,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = connectedGoogleEmail,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        TextButton(
+                            onClick = onSignOutGoogle,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.testTag("switch_google_account_button")
+                        ) {
+                            Text(
+                                text = "Ganti Google",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.weight(1f, fill = true))
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             // Minimalist Institutional Footer with Official Social Media Logos Only
             Column(
@@ -443,11 +513,6 @@ fun StaffLoginScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                HorizontalDivider(
-                    modifier = Modifier.width(120.dp),
-                    color = outlineColor.copy(alpha = 0.8f)
-                )
-
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(18.dp),
                     verticalAlignment = Alignment.CenterVertically

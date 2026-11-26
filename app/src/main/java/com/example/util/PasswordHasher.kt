@@ -22,7 +22,8 @@ object PasswordHasher {
     }
 
     fun verifyPassword(inputPassword: String, salt: String, expectedHash: String): Boolean {
-        val computed = hashPassword(inputPassword, salt)
-        return computed.equals(expectedHash, ignoreCase = true)
+        val computed = hashPassword(inputPassword, salt).lowercase().toByteArray(Charsets.UTF_8)
+        val expected = expectedHash.lowercase().toByteArray(Charsets.UTF_8)
+        return MessageDigest.isEqual(computed, expected)
     }
 }

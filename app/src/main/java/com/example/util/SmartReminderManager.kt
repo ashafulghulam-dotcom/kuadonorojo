@@ -161,6 +161,11 @@ object SmartReminderManager {
         return triggeredCount
     }
 
+    enum class ReminderRecipientType(val label: String) {
+        MODIN("Modin Desa"),
+        PENGHULU("Penghulu KUA")
+    }
+
     fun resolveAssignedModin(
         schedule: MarriageSchedule,
         staffAccounts: List<StaffAccount>
@@ -179,22 +184,83 @@ object SmartReminderManager {
             ?: modins.firstOrNull { it.villageId == schedule.villageId }
     }
 
+    fun resolveAssignedPenghulu(
+        schedule: MarriageSchedule,
+        staffAccounts: List<StaffAccount>
+    ): StaffAccount? {
+        val penghulus = staffAccounts.filter { it.resolvedRole() == UserRole.PENGHULU }
+        if (schedule.penghuluAccountId.isNotBlank()) {
+            penghulus.firstOrNull { it.id == schedule.penghuluAccountId }?.let { return it }
+        }
+        if (schedule.penghuluName.isNotBlank()) {
+            penghulus.firstOrNull {
+                it.officerName.equals(schedule.penghuluName, ignoreCase = true)
+            }?.let { return it }
+        }
+        if (schedule.waliHakimAccountId.isNotBlank()) {
+            penghulus.firstOrNull { it.id == schedule.waliHakimAccountId }?.let { return it }
+        }
+        return null
+    }
+
+    fun resolveAdminWhatsappNumber(
+        settings: ReminderSettings,
+        staffAccounts: List<StaffAccount>
+    ): String {
+        val fromSettings = settings.adminWhatsappNumber.trim()
+        if (fromSettings.isNotBlank()) return fromSettings
+        return staffAccounts
+            .firstOrNull { it.resolvedRole() == UserRole.ADMIN }
+            ?.whatsappNumber
+            ?.trim()
+            .orEmpty()
+    }
+
+    fun isPackageInstalled(context: Context, packageName: String): Boolean {
+        return try {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageInfo(packageName, 0)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun formatWhatsAppMessage(
         template: String,
-        schedule: MarriageSchedule
+        schedule: MarriageSchedule,
+        recipientType: ReminderRecipientType = ReminderRecipientType.MODIN,
+        adminWhatsappNumber: String = ""
     ): String {
-        val base = template.ifBlank { ReminderSettings.DEFAULT_WA_TEMPLATE }
+        val defaultTemplate = when (recipientType) {
+            ReminderRecipientType.MODIN -> ReminderSettings.DEFAULT_WA_TEMPLATE
+            ReminderRecipientType.PENGHULU -> ReminderSettings.DEFAULT_WA_PENGHULU_TEMPLATE
+        }
+        val base = template.ifBlank { defaultTemplate }
         val modinDisplay = schedule.modinName.ifBlank { "Modin ${schedule.villageName}" }
-        return base
+        val penghuluDisplay = schedule.penghuluName.ifBlank { "Penghulu KUA Donorojo" }
+        val waliDisplay = schedule.waliSummaryText().ifBlank { schedule.resolvedWaliStatus().label }
+        val cleanAdminWa = adminWhatsappNumber.trim()
+        val adminWaDisplay = cleanAdminWa.ifBlank { "KUA Donorojo" }
+
+        val formatted = base
             .replace("{pengantin}", "${schedule.groomName} & ${schedule.brideName}")
             .replace("{desa}", schedule.villageName)
             .replace("{modin}", modinDisplay)
             .replace("{tanggal}", formatIndonesianDate(schedule.weddingDate))
             .replace("{jam}", schedule.weddingTime)
             .replace("{lokasi}", schedule.locationAddress)
-            .replace("{penghulu}", schedule.penghuluName.ifBlank { "Belum ditentukan" })
+            .replace("{penghulu}", penghuluDisplay)
+            .replace("{wali}", waliDisplay)
             .replace("{status}", schedule.resolvedStatus().label)
             .replace("{no_daftar}", schedule.registrationNumber)
+            .replace("{wa_admin}", adminWaDisplay)
+
+        return if (cleanAdminWa.isNotBlank() && !formatted.contains(cleanAdminWa)) {
+            "$formatted\n\nDikirim via WA Resmi Admin KUA Donorojo: $cleanAdminWa"
+        } else {
+            formatted
+        }
     }
 
     fun normalizeIndonesianPhone(rawPhone: String): String {
@@ -210,8 +276,9 @@ object SmartReminderManager {
     fun launchWhatsAppReminder(
         context: Context,
         rawPhone: String,
-        message: String
-    ) {
+        message: String,
+        appPreference: com.example.data.WhatsAppAppPreference = com.example.data.WhatsAppAppPreference.AUTO
+    ): String {
         val normalizedPhone = normalizeIndonesianPhone(rawPhone)
         val encodedText = URLEncoder.encode(message, "UTF-8")
 
@@ -221,12 +288,27 @@ object SmartReminderManager {
             "https://wa.me/?text=$encodedText"
         }
 
+        val preferredPkg = appPreference.packageName
+        if (preferredPkg != null && isPackageInstalled(context, preferredPkg)) {
+            val targetedIntent = Intent(Intent.ACTION_VIEW, Uri.parse(waUrl)).apply {
+                setPackage(preferredPkg)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                context.startActivity(targetedIntent)
+                return appPreference.label
+            } catch (_: Exception) {
+                // Fallback below
+            }
+        }
+
         val waIntent = Intent(Intent.ACTION_VIEW, Uri.parse(waUrl)).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
 
         try {
             context.startActivity(waIntent)
+            return "WhatsApp"
         } catch (_: Exception) {
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
@@ -234,6 +316,7 @@ object SmartReminderManager {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(Intent.createChooser(shareIntent, "Kirim Pengingat via WhatsApp / Pesan"))
+            return "Bagikan Pesan"
         }
     }
 }

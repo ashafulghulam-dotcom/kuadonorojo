@@ -383,37 +383,48 @@ object MonthlyReportPdfGenerator {
 
         private val kopLine1Paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
-            textSize = 10f
+            textSize = 14.0f
             typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
+            letterSpacing = 0.03f
             textAlign = Paint.Align.CENTER
         }
         private val kopLine2Paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
-            textSize = 9.5f
+            textSize = 12.8f
             typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
+            letterSpacing = 0.015f
             textAlign = Paint.Align.CENTER
         }
         private val kopLine3Paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = emeraldDark
-            textSize = 12f
+            textSize = 15.0f
             typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
+            letterSpacing = 0.02f
             textAlign = Paint.Align.CENTER
         }
         private val kopSubPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = mutedText
-            textSize = 7.8f
+            color = slateText
+            textSize = 9.2f
             typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+            letterSpacing = 0.01f
             textAlign = Paint.Align.CENTER
         }
         private val reportTitlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
-            textSize = 10.5f
+            textSize = 11.2f
             typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            letterSpacing = 0.02f
             textAlign = Paint.Align.CENTER
         }
         private val reportSubPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = slateText
-            textSize = 8.2f
+            textSize = 8.4f
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+            textAlign = Paint.Align.CENTER
+        }
+        private val reportMetaPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = mutedText
+            textSize = 7.8f
             typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
             textAlign = Paint.Align.CENTER
         }
@@ -480,12 +491,12 @@ object MonthlyReportPdfGenerator {
         private val thickRulePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             color = Color.BLACK
-            strokeWidth = 1.8f
+            strokeWidth = 2.4f
         }
         private val thinRulePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             color = Color.BLACK
-            strokeWidth = 0.6f
+            strokeWidth = 0.8f
         }
         private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
 
@@ -575,31 +586,111 @@ object MonthlyReportPdfGenerator {
         private fun drawOfficialLetterhead() {
             val c = canvas ?: return
             val topY = cursorY
+            val blockHeight = 62f
 
-            // Official KUA logo on the left
+            // Official Kemenag / KUA emblem flush to left margin with exact aspect ratio
+            val logoBoxSize = 60f
+            val logoGap = 10f
             val logoBitmap = BitmapFactory.decodeResource(context.resources, R.drawable.ic_logo_kua_resmi)
-            if (logoBitmap != null) {
-                val logoRect = RectF(MARGIN_X + 2f, topY + 2f, MARGIN_X + 48f, topY + 46f)
+            if (logoBitmap != null && logoBitmap.width > 0 && logoBitmap.height > 0) {
+                val aspect = logoBitmap.width.toFloat() / logoBitmap.height.toFloat()
+                val drawW: Float
+                val drawH: Float
+                if (aspect >= 1f) {
+                    drawW = logoBoxSize
+                    drawH = logoBoxSize / aspect
+                } else {
+                    drawH = logoBoxSize
+                    drawW = logoBoxSize * aspect
+                }
+                val logoLeft = MARGIN_X + (logoBoxSize - drawW) / 2f
+                val logoTop = topY + (blockHeight - drawH) / 2f
+                val logoRect = RectF(logoLeft, logoTop, logoLeft + drawW, logoTop + drawH)
                 c.drawBitmap(logoBitmap, null, logoRect, bitmapPaint)
             }
 
-            // Centered kop surat text shifted slightly right so it balances visually with logo
-            val centerX = MARGIN_X + 26f + ((CONTENT_WIDTH - 26f) / 2f)
-            c.drawText("KEMENTERIAN AGAMA REPUBLIK INDONESIA", centerX, topY + 12f, kopLine1Paint)
-            c.drawText("KANTOR KEMENTERIAN AGAMA KABUPATEN JEPARA", centerX, topY + 24f, kopLine2Paint)
-            c.drawText("KANTOR URUSAN AGAMA (KUA) DONOROJO", centerX, topY + 38f, kopLine3Paint)
-            c.drawText(
-                "Wilayah Pelayanan 8 Desa • Donorojo, Kabupaten Jepara, Jawa Tengah",
-                centerX,
-                topY + 49f,
-                kopSubPaint
+            // Text column spans cleanly from right of the emblem to the right margin
+            val textLeft = MARGIN_X + logoBoxSize + logoGap
+            val textRight = A4_WIDTH_PT - MARGIN_X
+            val maxTextWidth = (textRight - textLeft).coerceAtLeast(200f)
+            val centerX = (textLeft + textRight) / 2f
+
+            drawFittedCenteredText(
+                c = c,
+                text = "KEMENTERIAN AGAMA REPUBLIK INDONESIA",
+                centerX = centerX,
+                baselineY = topY + 14f,
+                basePaint = kopLine1Paint,
+                targetMinWidth = maxTextWidth * 0.84f,
+                maxWidth = maxTextWidth * 0.96f,
+                maxTextSize = 15.2f
+            )
+            drawFittedCenteredText(
+                c = c,
+                text = "KANTOR KEMENTERIAN AGAMA KABUPATEN JEPARA",
+                centerX = centerX,
+                baselineY = topY + 30f,
+                basePaint = kopLine2Paint,
+                targetMinWidth = maxTextWidth * 0.90f,
+                maxWidth = maxTextWidth * 0.98f,
+                maxTextSize = 14.0f
+            )
+            drawFittedCenteredText(
+                c = c,
+                text = "KANTOR URUSAN AGAMA (KUA) DONOROJO",
+                centerX = centerX,
+                baselineY = topY + 48f,
+                basePaint = kopLine3Paint,
+                targetMinWidth = maxTextWidth * 0.88f,
+                maxWidth = maxTextWidth * 0.98f,
+                maxTextSize = 16.5f
+            )
+            drawFittedCenteredText(
+                c = c,
+                text = "Wilayah Pelayanan 8 Desa  •  Donorojo, Kabupaten Jepara, Jawa Tengah",
+                centerX = centerX,
+                baselineY = topY + 61f,
+                basePaint = kopSubPaint,
+                targetMinWidth = maxTextWidth * 0.78f,
+                maxWidth = maxTextWidth * 0.96f,
+                maxTextSize = 9.8f
             )
 
-            cursorY = topY + 56f
+            cursorY = topY + blockHeight + 7f
             c.drawLine(MARGIN_X, cursorY, A4_WIDTH_PT - MARGIN_X, cursorY, thickRulePaint)
-            cursorY += 2.8f
+            cursorY += 3.2f
             c.drawLine(MARGIN_X, cursorY, A4_WIDTH_PT - MARGIN_X, cursorY, thinRulePaint)
-            cursorY += 14f
+            cursorY += 15f
+        }
+
+        private fun drawFittedCenteredText(
+            c: Canvas,
+            text: String,
+            centerX: Float,
+            baselineY: Float,
+            basePaint: TextPaint,
+            targetMinWidth: Float,
+            maxWidth: Float,
+            maxTextSize: Float
+        ) {
+            val paint = TextPaint(basePaint)
+            val measured = paint.measureText(text)
+            if (measured > 0f) {
+                when {
+                    measured > maxWidth -> {
+                        paint.textSize = paint.textSize * (maxWidth / measured)
+                    }
+                    measured < targetMinWidth -> {
+                        val desiredSize = paint.textSize * (targetMinWidth / measured)
+                        paint.textSize = desiredSize.coerceAtMost(maxTextSize)
+                        val remeasured = paint.measureText(text)
+                        if (remeasured > maxWidth) {
+                            paint.textSize = paint.textSize * (maxWidth / remeasured)
+                        }
+                    }
+                }
+            }
+            c.drawText(text, centerX, baselineY, paint)
         }
 
         private fun drawReportHeader() {
@@ -628,7 +719,7 @@ object MonthlyReportPdfGenerator {
                 "Tanggal Laporan: $downloadDateFull",
                 centerX,
                 cursorY,
-                kopSubPaint
+                reportMetaPaint
             )
             cursorY += 13f
         }

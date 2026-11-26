@@ -125,6 +125,98 @@ enum class ValidationStatus(
     }
 }
 
+data class DocumentChecklist(
+    val n1: Boolean = false,
+    val n2: Boolean = false,
+    val n4: Boolean = false,
+    val ktp: Boolean = false,
+    val akta: Boolean = false,
+    val sehat: Boolean = false,
+    val tambahan: Boolean = false
+) {
+    val mandatoryCompletedCount: Int
+        get() = listOf(n1, n2, n4, ktp, akta, sehat).count { it }
+
+    val completedCount: Int
+        get() = listOf(n1, n2, n4, ktp, akta, sehat, tambahan).count { it }
+
+    val totalCount: Int
+        get() = TOTAL_ITEMS
+
+    val isAllMandatoryComplete: Boolean
+        get() = n1 && n2 && n4 && ktp && akta && sehat
+
+    fun missingMandatoryLabels(): List<String> = buildList {
+        if (!n1) add("Pengantar Nikah (N1)")
+        if (!n2) add("Permohonan Kehendak Nikah (N2)")
+        if (!n4) add("Persetujuan Calon Pengantin (N4)")
+        if (!ktp) add("Fotokopi KTP & KK")
+        if (!akta) add("Akta Kelahiran / Ijazah")
+        if (!sehat) add("Surat Kesehatan / Imunisasi TT")
+    }
+
+    fun serialize(): String = buildList {
+        if (n1) add(CODE_N1)
+        if (n2) add(CODE_N2)
+        if (n4) add(CODE_N4)
+        if (ktp) add(CODE_KTP)
+        if (akta) add(CODE_AKTA)
+        if (sehat) add(CODE_SEHAT)
+        if (tambahan) add(CODE_TAMBAHAN)
+    }.joinToString(",")
+
+    fun summaryText(): String = "$completedCount/$TOTAL_ITEMS Berkas"
+
+    companion object {
+        const val TOTAL_ITEMS = 7
+        const val CODE_N1 = "N1"
+        const val CODE_N2 = "N2"
+        const val CODE_N4 = "N4"
+        const val CODE_KTP = "KTP"
+        const val CODE_AKTA = "AKTA"
+        const val CODE_SEHAT = "SEHAT"
+        const val CODE_TAMBAHAN = "TAMBAHAN"
+
+        fun allComplete(includeOptional: Boolean = true): DocumentChecklist = DocumentChecklist(
+            n1 = true,
+            n2 = true,
+            n4 = true,
+            ktp = true,
+            akta = true,
+            sehat = true,
+            tambahan = includeOptional
+        )
+
+        fun fromSerialized(raw: String, fallbackComplete: Boolean = false): DocumentChecklist {
+            val tokens = raw.split(",")
+                .map { it.trim().uppercase(Locale.ROOT) }
+                .filter { it.isNotEmpty() }
+                .toSet()
+            if (tokens.isEmpty() && fallbackComplete) {
+                return allComplete(includeOptional = false)
+            }
+            return DocumentChecklist(
+                n1 = CODE_N1 in tokens,
+                n2 = CODE_N2 in tokens,
+                n4 = CODE_N4 in tokens,
+                ktp = CODE_KTP in tokens,
+                akta = CODE_AKTA in tokens,
+                sehat = CODE_SEHAT in tokens,
+                tambahan = CODE_TAMBAHAN in tokens
+            )
+        }
+    }
+}
+
+data class CloudSyncStatus(
+    val userEmail: String = "",
+    val isSyncing: Boolean = false,
+    val isOnlineSynced: Boolean = false,
+    val syncedScheduleCount: Int = 0,
+    val lastSyncedAtMillis: Long? = null,
+    val errorMessage: String? = null
+)
+
 data class StaffAccount(
     val id: String = "",
     val username: String = "",
@@ -135,12 +227,28 @@ data class StaffAccount(
     val villageName: String = "",
     val officerName: String = "",
     val whatsappNumber: String = "",
+    val googleEmail: String = "",
     val active: Boolean = true,
     val isWaliHakim: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {
     fun resolvedRole(): UserRole = UserRole.fromCode(role)
+}
+
+enum class WhatsAppAppPreference(
+    val code: String,
+    val label: String,
+    val packageName: String?
+) {
+    AUTO("AUTO", "Otomatis", null),
+    WHATSAPP("WHATSAPP", "WhatsApp", "com.whatsapp"),
+    WHATSAPP_BUSINESS("WHATSAPP_BUSINESS", "WA Business", "com.whatsapp.w4b");
+
+    companion object {
+        fun fromCode(raw: String?): WhatsAppAppPreference =
+            entries.firstOrNull { it.code.equals(raw, ignoreCase = true) } ?: AUTO
+    }
 }
 
 data class ReminderSettings(
@@ -151,7 +259,10 @@ data class ReminderSettings(
     val remindOneDayBefore: Boolean = true,
     val remindThreeDaysBefore: Boolean = false,
     val reminderTime: String = "07:00",
+    val adminWhatsappNumber: String = "",
+    val adminWhatsappApp: String = WhatsAppAppPreference.AUTO.code,
     val whatsappTemplate: String = DEFAULT_WA_TEMPLATE,
+    val whatsappPenghuluTemplate: String = DEFAULT_WA_PENGHULU_TEMPLATE,
     val headOfKuaTitle: String = DEFAULT_HEAD_OF_KUA_TITLE,
     val headOfKuaName: String = "",
     val headOfKuaNip: String = "",
@@ -160,11 +271,16 @@ data class ReminderSettings(
     val updatedByName: String = "",
     val updatedAt: Long = System.currentTimeMillis()
 ) {
+    fun resolvedAdminWhatsappApp(): WhatsAppAppPreference =
+        WhatsAppAppPreference.fromCode(adminWhatsappApp)
+
     companion object {
         const val GLOBAL_DOC_ID = "global_config"
         const val DEFAULT_HEAD_OF_KUA_TITLE = "Kepala KUA Donorojo"
         const val DEFAULT_WA_TEMPLATE =
-            "Assalamu'alaikum Wr. Wb.\nYth. {modin} ({desa}),\n\nMengingatkan jadwal akad nikah:\n• Pengantin: {pengantin}\n• No. Daftar: {no_daftar}\n• Tanggal: {tanggal}\n• Jam: {jam} WIB\n• Lokasi: {lokasi}\n• Modin: {modin}\n• Penghulu: {penghulu}\n• Status Validasi KUA: {status}\n\nMohon kesiapan pendampingan di wilayah desa. Terima kasih.\n— KUA Donorojo"
+            "Assalamu'alaikum Wr. Wb.\nYth. {modin} ({desa}),\n\nMengingatkan jadwal akad nikah:\n• Pengantin: {pengantin}\n• No. Daftar: {no_daftar}\n• Tanggal: {tanggal}\n• Jam: {jam} WIB\n• Lokasi: {lokasi}\n• Penghulu: {penghulu}\n• Wali Nikah: {wali}\n• Status Validasi KUA: {status}\n\nMohon kesiapan pendampingan di wilayah desa. Terima kasih.\n— Admin KUA Donorojo\nWA Resmi Admin KUA: {wa_admin}"
+        const val DEFAULT_WA_PENGHULU_TEMPLATE =
+            "Assalamu'alaikum Wr. Wb.\nYth. {penghulu},\n\nMengingatkan jadwal tugas pencatatan akad nikah:\n• Pengantin: {pengantin}\n• No. Daftar: {no_daftar}\n• Wilayah: {desa}\n• Tanggal: {tanggal}\n• Jam: {jam} WIB\n• Lokasi: {lokasi}\n• Modin Desa: {modin}\n• Wali Nikah: {wali}\n• Status Validasi KUA: {status}\n\nMohon kesiapan pelaksanaan tugas akad nikah. Terima kasih.\n— Admin KUA Donorojo\nWA Resmi Admin KUA: {wa_admin}"
     }
 }
 
@@ -204,6 +320,7 @@ data class MarriageSchedule(
     val waliHakimReason: String = "",
     val validationStatus: String = ValidationStatus.MENUNGGU.code,
     val documentsComplete: Boolean = false,
+    val documentChecklistCodes: String = "",
     val verificationNote: String = "",
     val verifiedByName: String = "",
     val createdAt: Long = System.currentTimeMillis(),
@@ -212,6 +329,8 @@ data class MarriageSchedule(
     fun resolvedStatus(): ValidationStatus = ValidationStatus.fromCode(validationStatus)
     fun resolvedLocationType(): LocationType = LocationType.fromCode(locationType)
     fun resolvedWaliStatus(): WaliStatus = WaliStatus.fromCode(waliStatus)
+    fun resolvedChecklist(): DocumentChecklist =
+        DocumentChecklist.fromSerialized(documentChecklistCodes, documentsComplete)
 
     fun waliSummaryText(): String {
         return when (resolvedWaliStatus()) {
@@ -271,6 +390,7 @@ data class ScheduleDraft(
     val waliHakimReason: String = "",
     val validationStatus: ValidationStatus = ValidationStatus.MENUNGGU,
     val documentsComplete: Boolean = false,
+    val documentChecklist: DocumentChecklist = DocumentChecklist(),
     val verificationNote: String = ""
 )
 

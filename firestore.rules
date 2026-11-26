@@ -55,23 +55,26 @@ service cloud.firestore {
       return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
         data.email is string && data.email.size() >= 3 && data.email.size() <= 150 &&
         data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
-        data.role in ['ADMIN', 'MODIN'] &&
+        data.role in ['ADMIN', 'PENGHULU', 'MODIN'] &&
         data.createdAt is timestamp && data.createdAt <= request.time &&
         data.updatedAt is timestamp && data.updatedAt <= request.time;
     }
 
     function isValidStaffAccount(data) {
-      return data.username is string && data.username.size() >= 3 && data.username.size() <= 50 &&
+      return data.localId is string && data.localId.size() >= 2 && data.localId.size() <= 80 &&
+        data.localId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.username is string && data.username.size() >= 3 && data.username.size() <= 50 &&
         data.username.matches('^[a-z0-9._\\-]+$') &&
         data.passwordHash is string && data.passwordHash.size() == 64 &&
         data.passwordSalt is string && data.passwordSalt.size() >= 8 && data.passwordSalt.size() <= 64 &&
-        data.role in ['ADMIN', 'MODIN'] &&
+        data.role in ['ADMIN', 'PENGHULU', 'MODIN'] &&
         data.villageId is string && data.villageId.size() <= 64 &&
         data.villageName is string && data.villageName.size() <= 80 &&
         data.officerName is string && data.officerName.size() >= 2 && data.officerName.size() <= 100 &&
         data.whatsappNumber is string && data.whatsappNumber.size() <= 30 &&
         data.googleEmail is string && data.googleEmail.size() <= 150 &&
         data.active is bool &&
+        data.waliHakimAuthorized is bool &&
         data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 &&
         data.createdAt is timestamp && data.createdAt <= request.time &&
         data.updatedAt is timestamp && data.updatedAt <= request.time;
@@ -85,9 +88,17 @@ service cloud.firestore {
         data.remindThreeDaysBefore is bool &&
         data.reminderTime is string && data.reminderTime.size() == 5 &&
         data.reminderTime.matches('^[0-9]{2}:[0-9]{2}$') &&
+        data.adminWhatsappNumber is string && data.adminWhatsappNumber.size() <= 30 &&
+        data.adminWhatsappApp in ['AUTO', 'WHATSAPP', 'WHATSAPP_BUSINESS'] &&
         data.whatsappTemplate is string && data.whatsappTemplate.size() >= 5 && data.whatsappTemplate.size() <= 800 &&
+        data.whatsappPenghuluTemplate is string && data.whatsappPenghuluTemplate.size() >= 5 && data.whatsappPenghuluTemplate.size() <= 800 &&
+        data.headOfKuaTitle is string && data.headOfKuaTitle.size() >= 2 && data.headOfKuaTitle.size() <= 100 &&
+        data.headOfKuaName is string && data.headOfKuaName.size() <= 120 &&
+        data.headOfKuaNip is string && data.headOfKuaNip.size() <= 40 &&
+        data.defaultWaliHakimAccountId is string && data.defaultWaliHakimAccountId.size() <= 80 &&
+        data.defaultWaliHakimName is string && data.defaultWaliHakimName.size() <= 120 &&
         data.updatedByName is string && data.updatedByName.size() <= 100 &&
-        data.allowedReaderEmails is list && data.allowedReaderEmails.size() <= 20 &&
+        data.allowedReaderEmails is list && data.allowedReaderEmails.size() <= 25 &&
         (data.allowedReaderEmails.size() == 0 || (data.allowedReaderEmails[0] is string && data.allowedReaderEmails[0].size() <= 150)) &&
         data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 &&
         data.createdAt is timestamp && data.createdAt <= request.time &&
@@ -100,7 +111,9 @@ service cloud.firestore {
         data.code.matches('^[a-z0-9_\\-]+$') &&
         data.modinName is string && data.modinName.size() <= 100 &&
         data.modinEmail is string && data.modinEmail.size() <= 150 &&
-        (!('modinPhone' in data) || (data.modinPhone is string && data.modinPhone.size() <= 30)) &&
+        data.modinPhone is string && data.modinPhone.size() <= 30 &&
+        data.allowedReaderEmails is list && data.allowedReaderEmails.size() <= 25 &&
+        (data.allowedReaderEmails.size() == 0 || (data.allowedReaderEmails[0] is string && data.allowedReaderEmails[0].size() <= 150)) &&
         data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128 &&
         data.createdAt is timestamp && data.createdAt <= request.time &&
         data.updatedAt is timestamp && data.updatedAt <= request.time;
@@ -112,21 +125,35 @@ service cloud.firestore {
         (!('groomNik' in data) || (data.groomNik is string && data.groomNik.size() <= 20)) &&
         data.brideName is string && data.brideName.size() >= 2 && data.brideName.size() <= 100 &&
         (!('brideNik' in data) || (data.brideNik is string && data.brideNik.size() <= 20)) &&
+        isValidId(data.villageDocId) &&
         isValidId(data.villageId) &&
         data.villageName is string && data.villageName.size() >= 2 && data.villageName.size() <= 80 &&
+        data.modinAccountId is string && data.modinAccountId.size() <= 80 &&
+        data.modinName is string && data.modinName.size() <= 100 &&
         data.weddingDate is string && data.weddingDate.size() == 10 &&
         data.weddingDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
         data.weddingTime is string && data.weddingTime.size() == 5 &&
         data.weddingTime.matches('^[0-9]{2}:[0-9]{2}$') &&
         data.locationType in ['KUA', 'LUAR_KUA'] &&
         data.locationAddress is string && data.locationAddress.size() >= 2 && data.locationAddress.size() <= 250 &&
+        data.penghuluAccountId is string && data.penghuluAccountId.size() <= 80 &&
         data.penghuluName is string && data.penghuluName.size() <= 100 &&
+        data.waliStatus in ['WALI_NASAB', 'WALI_HAKIM'] &&
+        data.waliRelationship is string && data.waliRelationship.size() <= 120 &&
+        data.waliName is string && data.waliName.size() <= 120 &&
+        data.waliBin is string && data.waliBin.size() <= 100 &&
+        data.waliNik is string && data.waliNik.size() <= 20 &&
+        data.waliAddress is string && data.waliAddress.size() <= 250 &&
+        data.waliHakimAccountId is string && data.waliHakimAccountId.size() <= 80 &&
+        data.waliHakimReason is string && data.waliHakimReason.size() <= 250 &&
         data.validationStatus in ['MENUNGGU', 'VERIFIKASI_BERKAS', 'PERLU_REVISI', 'TERVERIFIKASI', 'SELESAI', 'DIBATALKAN'] &&
         data.documentsComplete is bool &&
+        data.documentChecklistCodes is string && data.documentChecklistCodes.size() <= 120 &&
+        data.documentChecklistCodes.matches('^[A-Z0-9_,]*$') &&
         data.verificationNote is string && data.verificationNote.size() <= 500 &&
-        (!('verifiedByName' in data) || (data.verifiedByName is string && data.verifiedByName.size() <= 100)) &&
-        data.allowedModinEmails is list && data.allowedModinEmails.size() <= 10 &&
-        (data.allowedModinEmails.size() == 0 || (data.allowedModinEmails[0] is string && data.allowedModinEmails[0].size() <= 150)) &&
+        data.verifiedByName is string && data.verifiedByName.size() <= 100 &&
+        data.allowedMemberEmails is list && data.allowedMemberEmails.size() <= 15 &&
+        (data.allowedMemberEmails.size() == 0 || (data.allowedMemberEmails[0] is string && data.allowedMemberEmails[0].size() <= 150)) &&
         data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128 &&
         data.createdAt is timestamp && data.createdAt <= request.time &&
         data.updatedAt is timestamp && data.updatedAt <= request.time;
@@ -170,7 +197,7 @@ service cloud.firestore {
         incoming().keys().hasOnly(['userId', 'email', 'displayName', 'role', 'createdAt', 'updatedAt']) &&
         request.auth.uid == userId &&
         incoming().userId == request.auth.uid &&
-        (incoming().role == 'MODIN' || (incoming().role == 'ADMIN' && isAdmin()));
+        (incoming().role in ['MODIN', 'PENGHULU'] || (incoming().role == 'ADMIN' && isAdmin()));
 
       allow update: if isSignedIn() &&
         isValidId(userId) &&
@@ -190,8 +217,8 @@ service cloud.firestore {
     // --- COLLECTION 3: /staff_accounts/{accountId} ---
     match /staff_accounts/{accountId} {
       allow get: if isSignedIn() && isValidId(accountId) && (
-        isAdmin() ||
         resource.data.ownerUid == request.auth.uid ||
+        isAdmin() ||
         (hasVerifiedEmail() &&
           resource.data.googleEmail != '' &&
           resource.data.googleEmail == request.auth.token.email.lower())
@@ -210,36 +237,54 @@ service cloud.firestore {
         isValidStaffAccount(incoming()) &&
         incoming().ownerUid == request.auth.uid &&
         incoming().keys().hasAll([
-          'username', 'passwordHash', 'passwordSalt', 'role', 'villageId', 'villageName',
-          'officerName', 'whatsappNumber', 'googleEmail', 'active', 'ownerUid', 'createdAt', 'updatedAt'
+          'localId', 'username', 'passwordHash', 'passwordSalt', 'role', 'villageId', 'villageName',
+          'officerName', 'whatsappNumber', 'googleEmail', 'active', 'waliHakimAuthorized',
+          'ownerUid', 'createdAt', 'updatedAt'
         ]) &&
         incoming().keys().hasOnly([
-          'username', 'passwordHash', 'passwordSalt', 'role', 'villageId', 'villageName',
-          'officerName', 'whatsappNumber', 'googleEmail', 'active', 'ownerUid', 'createdAt', 'updatedAt'
-        ]) &&
-        isAdmin();
+          'localId', 'username', 'passwordHash', 'passwordSalt', 'role', 'villageId', 'villageName',
+          'officerName', 'whatsappNumber', 'googleEmail', 'active', 'waliHakimAuthorized',
+          'ownerUid', 'createdAt', 'updatedAt'
+        ]);
 
       allow update: if isSignedIn() &&
         isValidId(accountId) &&
         isValidStaffAccount(incoming()) &&
+        incoming().localId == existing().localId &&
         incoming().ownerUid == existing().ownerUid &&
         incoming().createdAt == existing().createdAt &&
-        incoming().role == existing().role &&
-        incoming().villageId == existing().villageId &&
-        isAdmin() &&
-        incoming().diff(existing()).affectedKeys().hasOnly([
-          'username', 'passwordHash', 'passwordSalt', 'officerName',
-          'whatsappNumber', 'googleEmail', 'active', 'villageName', 'updatedAt'
-        ]);
+        incoming().role == existing().role && (
+          // Action 1: Workspace owner or Admin KUA manages staff account
+          ((existing().ownerUid == request.auth.uid || isAdmin()) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'username', 'passwordHash', 'passwordSalt', 'officerName',
+              'whatsappNumber', 'googleEmail', 'active', 'waliHakimAuthorized',
+              'villageId', 'villageName', 'updatedAt'
+            ])) ||
+          // Action 2: Invited Modin or Penghulu edits own profile (strictly preserves role, village, active, waliHakimAuthorized)
+          (hasVerifiedEmail() &&
+            existing().googleEmail != '' &&
+            existing().googleEmail == request.auth.token.email.lower() &&
+            incoming().villageId == existing().villageId &&
+            incoming().villageName == existing().villageName &&
+            incoming().active == existing().active &&
+            incoming().waliHakimAuthorized == existing().waliHakimAuthorized &&
+            incoming().googleEmail == existing().googleEmail &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'username', 'passwordHash', 'passwordSalt', 'officerName',
+              'whatsappNumber', 'updatedAt'
+            ]))
+        );
 
-      allow delete: if isSignedIn() && isValidId(accountId) && isAdmin();
+      allow delete: if isSignedIn() && isValidId(accountId) &&
+        (existing().ownerUid == request.auth.uid || isAdmin());
     }
 
     // --- COLLECTION 4: /reminder_settings/{settingId} ---
     match /reminder_settings/{settingId} {
       allow get: if isSignedIn() && isValidId(settingId) && (
-        isAdmin() ||
         resource.data.ownerUid == request.auth.uid ||
+        isAdmin() ||
         (hasVerifiedEmail() &&
           request.auth.token.email.lower() in resource.data.allowedReaderEmails)
       );
@@ -258,55 +303,71 @@ service cloud.firestore {
         incoming().keys().hasAll([
           'autoPhoneNotifEnabled', 'whatsappReminderEnabled', 'remindOnWeddingDay',
           'remindOneDayBefore', 'remindThreeDaysBefore', 'reminderTime',
-          'whatsappTemplate', 'updatedByName', 'allowedReaderEmails', 'ownerUid', 'createdAt', 'updatedAt'
+          'adminWhatsappNumber', 'adminWhatsappApp', 'whatsappTemplate', 'whatsappPenghuluTemplate',
+          'headOfKuaTitle', 'headOfKuaName', 'headOfKuaNip',
+          'defaultWaliHakimAccountId', 'defaultWaliHakimName',
+          'updatedByName', 'allowedReaderEmails', 'ownerUid', 'createdAt', 'updatedAt'
         ]) &&
         incoming().keys().hasOnly([
           'autoPhoneNotifEnabled', 'whatsappReminderEnabled', 'remindOnWeddingDay',
           'remindOneDayBefore', 'remindThreeDaysBefore', 'reminderTime',
-          'whatsappTemplate', 'updatedByName', 'allowedReaderEmails', 'ownerUid', 'createdAt', 'updatedAt'
-        ]) &&
-        isAdmin();
+          'adminWhatsappNumber', 'adminWhatsappApp', 'whatsappTemplate', 'whatsappPenghuluTemplate',
+          'headOfKuaTitle', 'headOfKuaName', 'headOfKuaNip',
+          'defaultWaliHakimAccountId', 'defaultWaliHakimName',
+          'updatedByName', 'allowedReaderEmails', 'ownerUid', 'createdAt', 'updatedAt'
+        ]);
 
       allow update: if isSignedIn() &&
         isValidId(settingId) &&
         isValidReminderSettings(incoming()) &&
         incoming().ownerUid == existing().ownerUid &&
         incoming().createdAt == existing().createdAt &&
-        isAdmin() &&
+        (existing().ownerUid == request.auth.uid || isAdmin()) &&
         incoming().diff(existing()).affectedKeys().hasOnly([
           'autoPhoneNotifEnabled', 'whatsappReminderEnabled', 'remindOnWeddingDay',
           'remindOneDayBefore', 'remindThreeDaysBefore', 'reminderTime',
-          'whatsappTemplate', 'updatedByName', 'allowedReaderEmails', 'updatedAt'
+          'adminWhatsappNumber', 'adminWhatsappApp', 'whatsappTemplate', 'whatsappPenghuluTemplate',
+          'headOfKuaTitle', 'headOfKuaName', 'headOfKuaNip',
+          'defaultWaliHakimAccountId', 'defaultWaliHakimName',
+          'updatedByName', 'allowedReaderEmails', 'updatedAt'
         ]);
 
-      allow delete: if isSignedIn() && isValidId(settingId) && isAdmin();
+      allow delete: if isSignedIn() && isValidId(settingId) &&
+        (existing().ownerUid == request.auth.uid || isAdmin());
     }
 
     // --- COLLECTION 5: /villages/{villageId} ---
     match /villages/{villageId} {
       allow get: if isSignedIn() && isValidId(villageId) && (
+        resource.data.createdByUid == request.auth.uid ||
         isAdmin() ||
-        (hasVerifiedEmail() &&
-          resource.data.modinEmail != '' &&
-          resource.data.modinEmail == request.auth.token.email.lower())
+        (hasVerifiedEmail() && (
+          (resource.data.modinEmail != '' && resource.data.modinEmail == request.auth.token.email.lower()) ||
+          request.auth.token.email.lower() in resource.data.allowedReaderEmails
+        ))
       );
 
       allow list: if isSignedIn() && (
         isBootstrappedAdmin() ||
         resource.data.createdByUid == request.auth.uid ||
-        (hasVerifiedEmail() &&
-          resource.data.modinEmail != '' &&
-          resource.data.modinEmail == request.auth.token.email.lower())
+        (hasVerifiedEmail() && (
+          (resource.data.modinEmail != '' && resource.data.modinEmail == request.auth.token.email.lower()) ||
+          request.auth.token.email.lower() in resource.data.allowedReaderEmails
+        ))
       );
 
       allow create: if isSignedIn() &&
         isValidId(villageId) &&
         isValidVillage(incoming()) &&
-        incoming().code == villageId &&
         incoming().createdByUid == request.auth.uid &&
-        incoming().keys().hasAll(['name', 'code', 'modinName', 'modinEmail', 'createdByUid', 'createdAt', 'updatedAt']) &&
-        incoming().keys().hasOnly(['name', 'code', 'modinName', 'modinEmail', 'modinPhone', 'createdByUid', 'createdAt', 'updatedAt']) &&
-        isAdmin();
+        incoming().keys().hasAll([
+          'name', 'code', 'modinName', 'modinEmail', 'modinPhone',
+          'allowedReaderEmails', 'createdByUid', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'name', 'code', 'modinName', 'modinEmail', 'modinPhone',
+          'allowedReaderEmails', 'createdByUid', 'createdAt', 'updatedAt'
+        ]);
 
       allow update: if isSignedIn() &&
         isValidId(villageId) &&
@@ -314,27 +375,29 @@ service cloud.firestore {
         incoming().createdByUid == existing().createdByUid &&
         incoming().createdAt == existing().createdAt &&
         incoming().code == existing().code &&
-        isAdmin() && (
-          incoming().diff(existing()).affectedKeys().hasOnly(['modinName', 'modinEmail', 'modinPhone', 'updatedAt']) ||
-          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'modinName', 'modinEmail', 'modinPhone', 'updatedAt'])
-        );
+        (existing().createdByUid == request.auth.uid || isAdmin()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'modinName', 'modinEmail', 'modinPhone', 'allowedReaderEmails', 'updatedAt'
+        ]);
 
-      allow delete: if isSignedIn() && isValidId(villageId) && isAdmin();
+      allow delete: if isSignedIn() && isValidId(villageId) &&
+        (existing().createdByUid == request.auth.uid || isAdmin());
     }
 
     // --- COLLECTION 6: /marriage_schedules/{scheduleId} ---
     match /marriage_schedules/{scheduleId} {
       allow get: if isSignedIn() && isValidId(scheduleId) && (
+        resource.data.createdByUid == request.auth.uid ||
         isAdmin() ||
         (hasVerifiedEmail() &&
-          request.auth.token.email.lower() in resource.data.allowedModinEmails)
+          request.auth.token.email.lower() in resource.data.allowedMemberEmails)
       );
 
       allow list: if isSignedIn() && (
         isBootstrappedAdmin() ||
         resource.data.createdByUid == request.auth.uid ||
         (hasVerifiedEmail() &&
-          request.auth.token.email.lower() in resource.data.allowedModinEmails)
+          request.auth.token.email.lower() in resource.data.allowedMemberEmails)
       );
 
       allow create: if isSignedIn() &&
@@ -342,42 +405,54 @@ service cloud.firestore {
         isValidSchedule(incoming()) &&
         incoming().createdByUid == request.auth.uid &&
         incoming().keys().hasAll([
-          'registrationNumber', 'groomName', 'brideName', 'villageId', 'villageName',
-          'weddingDate', 'weddingTime', 'locationType', 'locationAddress', 'penghuluName',
-          'validationStatus', 'documentsComplete', 'verificationNote',
-          'allowedModinEmails', 'createdByUid', 'createdAt', 'updatedAt'
+          'registrationNumber', 'groomName', 'brideName', 'villageDocId', 'villageId', 'villageName',
+          'modinAccountId', 'modinName', 'weddingDate', 'weddingTime', 'locationType', 'locationAddress',
+          'penghuluAccountId', 'penghuluName', 'waliStatus', 'waliRelationship', 'waliName',
+          'waliBin', 'waliNik', 'waliAddress', 'waliHakimAccountId', 'waliHakimReason',
+          'validationStatus', 'documentsComplete', 'documentChecklistCodes', 'verificationNote',
+          'verifiedByName', 'allowedMemberEmails', 'createdByUid', 'createdAt', 'updatedAt'
         ]) &&
         incoming().keys().hasOnly([
           'registrationNumber', 'groomName', 'groomNik', 'brideName', 'brideNik',
-          'villageId', 'villageName', 'weddingDate', 'weddingTime', 'locationType',
-          'locationAddress', 'penghuluName', 'validationStatus', 'documentsComplete',
-          'verificationNote', 'verifiedByName', 'allowedModinEmails',
-          'createdByUid', 'createdAt', 'updatedAt'
+          'villageDocId', 'villageId', 'villageName', 'modinAccountId', 'modinName',
+          'weddingDate', 'weddingTime', 'locationType', 'locationAddress',
+          'penghuluAccountId', 'penghuluName', 'waliStatus', 'waliRelationship', 'waliName',
+          'waliBin', 'waliNik', 'waliAddress', 'waliHakimAccountId', 'waliHakimReason',
+          'validationStatus', 'documentsComplete', 'documentChecklistCodes', 'verificationNote',
+          'verifiedByName', 'allowedMemberEmails', 'createdByUid', 'createdAt', 'updatedAt'
         ]) &&
-        isAdmin() &&
-        exists(/databases/$(database)/documents/villages/$(incoming().villageId));
+        exists(/databases/$(database)/documents/villages/$(incoming().villageDocId)) &&
+        get(/databases/$(database)/documents/villages/$(incoming().villageDocId)).data.createdByUid == request.auth.uid;
 
       allow update: if isSignedIn() &&
         isValidId(scheduleId) &&
         isValidSchedule(incoming()) &&
         incoming().createdByUid == existing().createdByUid &&
         incoming().createdAt == existing().createdAt &&
-        isAdmin() && (
+        (existing().createdByUid == request.auth.uid || isAdmin()) && (
+          // Action 1: Verification & N1-N4 Checklist Update
           incoming().diff(existing()).affectedKeys().hasOnly([
-            'validationStatus', 'documentsComplete', 'verificationNote', 'verifiedByName', 'updatedAt'
+            'validationStatus', 'documentsComplete', 'documentChecklistCodes',
+            'verificationNote', 'verifiedByName', 'updatedAt'
           ]) ||
+          // Action 2: Sync officer display name / allowed emails cascade
           incoming().diff(existing()).affectedKeys().hasOnly([
-            'allowedModinEmails', 'villageName', 'updatedAt'
+            'modinName', 'penghuluName', 'waliName', 'allowedMemberEmails', 'villageName', 'updatedAt'
           ]) ||
+          // Action 3: Full schedule edit
           (incoming().diff(existing()).affectedKeys().hasOnly([
             'registrationNumber', 'groomName', 'groomNik', 'brideName', 'brideNik',
-            'villageId', 'villageName', 'weddingDate', 'weddingTime', 'locationType',
-            'locationAddress', 'penghuluName', 'validationStatus', 'documentsComplete',
-            'verificationNote', 'verifiedByName', 'allowedModinEmails', 'updatedAt'
-          ]) && exists(/databases/$(database)/documents/villages/$(incoming().villageId)))
+            'villageDocId', 'villageId', 'villageName', 'modinAccountId', 'modinName',
+            'weddingDate', 'weddingTime', 'locationType', 'locationAddress',
+            'penghuluAccountId', 'penghuluName', 'waliStatus', 'waliRelationship', 'waliName',
+            'waliBin', 'waliNik', 'waliAddress', 'waliHakimAccountId', 'waliHakimReason',
+            'validationStatus', 'documentsComplete', 'documentChecklistCodes', 'verificationNote',
+            'verifiedByName', 'allowedMemberEmails', 'updatedAt'
+          ]) && exists(/databases/$(database)/documents/villages/$(incoming().villageDocId)))
         );
 
-      allow delete: if isSignedIn() && isValidId(scheduleId) && isAdmin();
+      allow delete: if isSignedIn() && isValidId(scheduleId) &&
+        (existing().createdByUid == request.auth.uid || isAdmin());
     }
   }
 }

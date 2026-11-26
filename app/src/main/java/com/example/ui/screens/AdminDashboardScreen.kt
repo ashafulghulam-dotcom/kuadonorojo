@@ -30,9 +30,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
@@ -41,12 +45,15 @@ import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.ManageAccounts
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.Calculate
 import androidx.compose.material.icons.outlined.CalendarMonth
@@ -78,6 +85,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,7 +96,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.data.CloudSyncStatus
 import com.example.data.DashboardMode
+import com.example.data.DocumentChecklist
 import com.example.data.MarriageSchedule
 import com.example.data.ReminderSettings
 import com.example.data.ScheduleDraft
@@ -97,20 +107,31 @@ import com.example.data.UiState
 import com.example.data.UserRole
 import com.example.data.ValidationStatus
 import com.example.data.Village
+import com.example.data.WhatsAppAppPreference
+import com.example.data.formatShortTimestamp
 import com.example.data.todayIsoDate
 import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.ErrorStateCard
 import com.example.ui.components.KpiSummaryStrip
 import com.example.ui.components.KuaHeroHeader
+import com.example.ui.components.MonthlyCalendarSection
+import com.example.ui.components.RecapAnalyticsSection
 import com.example.ui.components.ScheduleCard
 import com.example.ui.components.ScheduleDetailSheet
 import com.example.ui.components.SearchAndStatusFilterBar
 import com.example.ui.components.TodayWeddingsSpotlightSection
+import com.example.ui.components.WaDigestQuickCard
 import com.example.ui.theme.StatusCancelledBg
 import com.example.ui.theme.StatusCancelledFg
 import com.example.ui.theme.StatusVerifiedBg
 import com.example.ui.theme.StatusVerifiedFg
+import com.example.util.KuaBackupPayload
+import com.example.util.KuaDataTransferManager
 import com.example.util.SmartReminderManager
+import com.example.util.SmartReminderManager.ReminderRecipientType
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private enum class AdminTab(val label: String) {
     SCHEDULES("Jadwal"),
@@ -120,6 +141,12 @@ private enum class AdminTab(val label: String) {
     ACCOUNTS("Akun")
 }
 
+private enum class AdminScheduleViewMode(val label: String) {
+    LIST("Daftar"),
+    CALENDAR("Kalender"),
+    ANALYTICS("Rekap Grafik")
+}
+
 @Composable
 fun AdminDashboardScreen(
     activeAccount: StaffAccount,
@@ -127,14 +154,17 @@ fun AdminDashboardScreen(
     schedulesState: UiState<List<MarriageSchedule>>,
     staffAccountsState: UiState<List<StaffAccount>>,
     reminderSettingsState: UiState<ReminderSettings>,
+    cloudSyncStatus: CloudSyncStatus = CloudSyncStatus(),
     isSaving: Boolean,
     actionMessage: String?,
     onClearMessage: () -> Unit,
     onPostMessage: (String) -> Unit,
     onSwitchMode: (DashboardMode) -> Unit,
     onLogoutStaff: () -> Unit,
+    onTriggerCloudSync: () -> Unit = {},
+    onRestoreBackup: (KuaBackupPayload, () -> Unit) -> Unit = { _, _ -> },
     onSaveSchedule: (ScheduleDraft, Village, () -> Unit) -> Unit,
-    onUpdateVerification: (String, ValidationStatus, Boolean, String, () -> Unit) -> Unit,
+    onUpdateVerification: (String, ValidationStatus, DocumentChecklist, Boolean, String, () -> Unit) -> Unit,
     onDeleteSchedule: (String, () -> Unit) -> Unit,
     onCreateModinAccount: (
         village: Village,
@@ -142,6 +172,7 @@ fun AdminDashboardScreen(
         password: String,
         officerName: String,
         whatsappNumber: String,
+        googleEmail: String,
         active: Boolean,
         onSuccess: () -> Unit
     ) -> Unit,
@@ -150,6 +181,7 @@ fun AdminDashboardScreen(
         password: String,
         officerName: String,
         whatsappNumber: String,
+        googleEmail: String,
         active: Boolean,
         isWaliHakim: Boolean,
         onSuccess: () -> Unit
@@ -160,6 +192,7 @@ fun AdminDashboardScreen(
         newPassword: String?,
         officerName: String,
         whatsappNumber: String,
+        googleEmail: String,
         active: Boolean,
         newVillage: Village?,
         isWaliHakim: Boolean,
@@ -176,7 +209,10 @@ fun AdminDashboardScreen(
     ) -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableStateOf(AdminTab.SCHEDULES) }
+    var scheduleViewMode by remember { mutableStateOf(AdminScheduleViewMode.LIST) }
+    var selectedCalendarDate by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedStatusFilter by remember { mutableStateOf<ValidationStatus?>(null) }
     var selectedVillageFilter by remember { mutableStateOf<String?>(null) }
@@ -195,6 +231,8 @@ fun AdminDashboardScreen(
     var showMonthlyReportSheet by remember { mutableStateOf(false) }
     var showHeadOfKuaDialog by remember { mutableStateOf(false) }
     var showWaliHakimSettingsDialog by remember { mutableStateOf(false) }
+    var pendingRestorePayload by remember { mutableStateOf<KuaBackupPayload?>(null) }
+    var isProcessingTransfer by remember { mutableStateOf(false) }
 
     var hasNotifPermission by remember {
         mutableStateOf(SmartReminderManager.hasNotificationPermission(context))
@@ -237,6 +275,51 @@ fun AdminDashboardScreen(
     val staffAccounts = (staffAccountsState as? UiState.Success)?.data.orEmpty()
     val reminderSettings = (reminderSettingsState as? UiState.Success)?.data ?: ReminderSettings()
 
+    val createBackupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        isProcessingTransfer = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bytes = KuaDataTransferManager.buildBackupJsonBytes(
+                        villages = villages,
+                        staffAccounts = staffAccounts,
+                        schedules = schedules,
+                        settings = reminderSettings
+                    )
+                    KuaDataTransferManager.writeBytesToUri(context, uri, bytes).getOrThrow()
+                }
+            }
+            isProcessingTransfer = false
+            result.onSuccess {
+                onPostMessage("File backup JSON berhasil disimpan (${schedules.size} jadwal & ${staffAccounts.size} akun).")
+            }.onFailure { err ->
+                onPostMessage(err.localizedMessage ?: "Gagal menyimpan file backup JSON.")
+            }
+        }
+    }
+
+    val openRestoreLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        isProcessingTransfer = true
+        scope.launch {
+            val parsed = withContext(Dispatchers.IO) {
+                KuaDataTransferManager.readBytesFromUri(context, uri)
+                    .mapCatching { bytes -> KuaDataTransferManager.parseBackupJson(bytes).getOrThrow() }
+            }
+            isProcessingTransfer = false
+            parsed.onSuccess { payload ->
+                pendingRestorePayload = payload
+            }.onFailure { err ->
+                onPostMessage(err.localizedMessage ?: "File backup tidak valid atau gagal dibaca.")
+            }
+        }
+    }
+
     val todayIso = remember { todayIsoDate() }
     val todaySchedules = remember(schedules, todayIso) {
         schedules.filter {
@@ -259,13 +342,29 @@ fun AdminDashboardScreen(
         }
     }
 
-    val filteredSchedules = remember(schedules, searchQuery, selectedStatusFilter, selectedVillageFilter, selectedTab) {
+    val filteredSchedules = remember(
+        schedules,
+        searchQuery,
+        selectedStatusFilter,
+        selectedVillageFilter,
+        selectedTab,
+        scheduleViewMode,
+        selectedCalendarDate
+    ) {
         schedules.filter { item ->
             val status = item.resolvedStatus()
             val matchesTab = if (selectedTab == AdminTab.VERIFICATION) {
                 status == ValidationStatus.MENUNGGU ||
                     status == ValidationStatus.VERIFIKASI_BERKAS ||
                     status == ValidationStatus.PERLU_REVISI
+            } else {
+                true
+            }
+            val matchesDate = if (selectedTab == AdminTab.SCHEDULES &&
+                scheduleViewMode == AdminScheduleViewMode.CALENDAR &&
+                !selectedCalendarDate.isNullOrBlank()
+            ) {
+                item.weddingDate == selectedCalendarDate
             } else {
                 true
             }
@@ -279,7 +378,7 @@ fun AdminDashboardScreen(
                 item.modinName.lowercase().contains(q) ||
                 item.registrationNumber.lowercase().contains(q) ||
                 item.penghuluName.lowercase().contains(q)
-            matchesTab && matchesStatus && matchesVillage && matchesSearch
+            matchesTab && matchesDate && matchesStatus && matchesVillage && matchesSearch
         }
     }
 
@@ -310,13 +409,52 @@ fun AdminDashboardScreen(
         }
     }
 
-    val triggerWhatsAppReminder: (MarriageSchedule, String) -> Unit = { schedule, template ->
-        val modinPhone = SmartReminderManager
-            .resolveAssignedModin(schedule, staffAccounts)
-            ?.whatsappNumber
-            .orEmpty()
-        val message = SmartReminderManager.formatWhatsAppMessage(template, schedule)
-        SmartReminderManager.launchWhatsAppReminder(context, modinPhone, message)
+    val triggerWhatsAppReminder: (
+        MarriageSchedule,
+        ReminderRecipientType,
+        String,
+        String,
+        WhatsAppAppPreference
+    ) -> Unit = { schedule, recipientType, template, adminWaOverride, appPref ->
+        val resolvedAdminWa = adminWaOverride.trim().ifBlank {
+            SmartReminderManager.resolveAdminWhatsappNumber(reminderSettings, staffAccounts)
+        }
+        val recipientAccount = when (recipientType) {
+            ReminderRecipientType.MODIN -> SmartReminderManager.resolveAssignedModin(schedule, staffAccounts)
+            ReminderRecipientType.PENGHULU -> SmartReminderManager.resolveAssignedPenghulu(schedule, staffAccounts)
+        }
+        val targetPhone = recipientAccount?.whatsappNumber.orEmpty()
+        val targetLabel = when (recipientType) {
+            ReminderRecipientType.MODIN -> schedule.modinName.ifBlank {
+                recipientAccount?.officerName ?: "Modin ${schedule.villageName}"
+            }
+            ReminderRecipientType.PENGHULU -> schedule.penghuluName.ifBlank {
+                recipientAccount?.officerName ?: "Penghulu KUA"
+            }
+        }
+        val message = SmartReminderManager.formatWhatsAppMessage(
+            template = template,
+            schedule = schedule,
+            recipientType = recipientType,
+            adminWhatsappNumber = resolvedAdminWa
+        )
+        val launchedApp = SmartReminderManager.launchWhatsAppReminder(
+            context = context,
+            rawPhone = targetPhone,
+            message = message,
+            appPreference = appPref
+        )
+        when {
+            targetPhone.isBlank() -> {
+                onPostMessage("Nomor WA $targetLabel belum diisi di tab Akun. $launchedApp dibuka untuk pilih kontak manual.")
+            }
+            resolvedAdminWa.isBlank() -> {
+                onPostMessage("Membuka $launchedApp ke $targetLabel. Atur Nomor WA Admin KUA di tab Reminder untuk identitas pengirim resmi.")
+            }
+            else -> {
+                onPostMessage("Membuka $launchedApp (WA Admin $resolvedAdminWa) ke $targetLabel.")
+            }
+        }
     }
 
     Scaffold(
@@ -546,21 +684,102 @@ fun AdminDashboardScreen(
                                 }
                             }
 
-                            item(key = "today_spotlight") {
-                                TodayWeddingsSpotlightSection(
-                                    todaySchedules = todaySchedules,
-                                    isAdminMode = true,
-                                    onScheduleClick = { detailSchedule = it },
-                                    onSendWhatsApp = { item ->
-                                        triggerWhatsAppReminder(item, reminderSettings.whatsappTemplate)
-                                    },
-                                    onSendPhoneNotif = { item ->
-                                        triggerPhoneNotification(item)
-                                    }
+                            item(key = "wa_digest_quick_card") {
+                                val resolvedAdminWa = remember(reminderSettings, staffAccounts) {
+                                    SmartReminderManager.resolveAdminWhatsappNumber(reminderSettings, staffAccounts)
+                                }
+                                WaDigestQuickCard(
+                                    schedules = schedules,
+                                    scopeLabel = "Semua Wilayah (8 Desa)",
+                                    adminWhatsappNumber = resolvedAdminWa,
+                                    appPreference = reminderSettings.resolvedAdminWhatsappApp(),
+                                    villages = villages,
+                                    onFeedback = onPostMessage
                                 )
+                            }
+
+                            item(key = "admin_schedule_view_switcher") {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    AdminScheduleViewMode.entries.forEach { mode ->
+                                        val icon = when (mode) {
+                                            AdminScheduleViewMode.LIST -> Icons.Filled.List
+                                            AdminScheduleViewMode.CALENDAR -> Icons.Filled.CalendarMonth
+                                            AdminScheduleViewMode.ANALYTICS -> Icons.Filled.BarChart
+                                        }
+                                        FilterChip(
+                                            selected = scheduleViewMode == mode,
+                                            onClick = { scheduleViewMode = mode },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = icon,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            },
+                                            label = { Text(mode.label) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                            ),
+                                            modifier = Modifier.testTag("admin_view_mode_${mode.name.lowercase()}")
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (scheduleViewMode == AdminScheduleViewMode.CALENDAR) {
+                                item(key = "admin_monthly_calendar") {
+                                    MonthlyCalendarSection(
+                                        schedules = schedules,
+                                        selectedIsoDate = selectedCalendarDate,
+                                        onSelectDate = { selectedCalendarDate = it }
+                                    )
+                                }
+                            } else if (scheduleViewMode == AdminScheduleViewMode.ANALYTICS) {
+                                item(key = "admin_recap_analytics") {
+                                    RecapAnalyticsSection(
+                                        villages = villages,
+                                        schedules = schedules
+                                    )
+                                }
+                            } else {
+                                item(key = "today_spotlight") {
+                                    TodayWeddingsSpotlightSection(
+                                        todaySchedules = todaySchedules,
+                                        isAdminMode = true,
+                                        onScheduleClick = { detailSchedule = it },
+                                        onSendWhatsApp = { item ->
+                                            triggerWhatsAppReminder(
+                                                item,
+                                                ReminderRecipientType.MODIN,
+                                                reminderSettings.whatsappTemplate,
+                                                SmartReminderManager.resolveAdminWhatsappNumber(reminderSettings, staffAccounts),
+                                                reminderSettings.resolvedAdminWhatsappApp()
+                                            )
+                                        },
+                                        onSendWhatsAppPenghulu = { item ->
+                                            triggerWhatsAppReminder(
+                                                item,
+                                                ReminderRecipientType.PENGHULU,
+                                                reminderSettings.whatsappPenghuluTemplate,
+                                                SmartReminderManager.resolveAdminWhatsappNumber(reminderSettings, staffAccounts),
+                                                reminderSettings.resolvedAdminWhatsappApp()
+                                            )
+                                        },
+                                        onSendPhoneNotif = { item ->
+                                            triggerPhoneNotification(item)
+                                        }
+                                    )
+                                }
                             }
                         }
 
+                        if (selectedTab == AdminTab.VERIFICATION || scheduleViewMode != AdminScheduleViewMode.ANALYTICS) {
                         item(key = "search_filter_bar") {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 SearchAndStatusFilterBar(
@@ -672,6 +891,7 @@ fun AdminDashboardScreen(
                                 }
                             }
                         }
+                        }
                     }
 
                     AdminTab.CALCULATOR -> {
@@ -681,6 +901,19 @@ fun AdminDashboardScreen(
                     }
 
                     AdminTab.REMINDER -> {
+                        item(key = "reminder_wa_digest_card") {
+                            val resolvedAdminWa = remember(reminderSettings, staffAccounts) {
+                                SmartReminderManager.resolveAdminWhatsappNumber(reminderSettings, staffAccounts)
+                            }
+                            WaDigestQuickCard(
+                                schedules = schedules,
+                                scopeLabel = "Semua Wilayah (8 Desa)",
+                                adminWhatsappNumber = resolvedAdminWa,
+                                appPreference = reminderSettings.resolvedAdminWhatsappApp(),
+                                villages = villages,
+                                onFeedback = onPostMessage
+                            )
+                        }
                         item(key = "smart_reminder_section") {
                             SmartReminderSection(
                                 settings = reminderSettings,
@@ -697,6 +930,190 @@ fun AdminDashboardScreen(
                     }
 
                     AdminTab.ACCOUNTS -> {
+                        item(key = "cloud_sync_status_card") {
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(
+                                    1.2.dp,
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("card_cloud_sync_status")
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer
+                                        ) {
+                                            Icon(
+                                                imageVector = if (cloudSyncStatus.isSyncing) Icons.Filled.CloudSync else Icons.Filled.CloudDone,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier
+                                                    .padding(10.dp)
+                                                    .size(22.dp)
+                                            )
+                                        }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Sinkronisasi Cloud Antar-HP",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = if (cloudSyncStatus.userEmail.isNotBlank()) {
+                                                    "Terhubung: ${cloudSyncStatus.userEmail}"
+                                                } else {
+                                                    "Terhubung ke Firebase Cloud Firestore"
+                                                },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = if (cloudSyncStatus.isOnlineSynced) StatusVerifiedBg else MaterialTheme.colorScheme.surfaceVariant
+                                        ) {
+                                            Text(
+                                                text = if (cloudSyncStatus.isSyncing) "Menyinkron..." else if (cloudSyncStatus.isOnlineSynced) "Online" else "Siap",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (cloudSyncStatus.isOnlineSynced) StatusVerifiedFg else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Text(
+                                        text = if (cloudSyncStatus.lastSyncedAtMillis != null) {
+                                            "Sinkron terakhir: ${formatShortTimestamp(cloudSyncStatus.lastSyncedAtMillis)} • Isi Email Google pada akun Penghulu/Modin agar data otomatis tersinkron ke HP mereka."
+                                        } else {
+                                            "Isi Email Google pada setiap akun Penghulu dan Modin di bawah agar jadwal nikah otomatis tampil real-time di HP mereka."
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    OutlinedButton(
+                                        onClick = onTriggerCloudSync,
+                                        enabled = !cloudSyncStatus.isSyncing,
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(46.dp)
+                                            .testTag("btn_trigger_cloud_sync")
+                                    ) {
+                                        if (cloudSyncStatus.isSyncing) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Menyinkronkan Data...")
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Filled.Sync,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Sinkronkan Cloud Sekarang")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        item(key = "backup_restore_card") {
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.75f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("card_backup_restore")
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "Cadangan & Pemulihan Data (JSON)",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Simpan arsip lengkap jadwal nikah, akun petugas, dan pengaturan KUA ke file JSON atau pulihkan kapan saja.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Button(
+                                            onClick = {
+                                                createBackupLauncher.launch(
+                                                    KuaDataTransferManager.suggestedBackupFileName()
+                                                )
+                                            },
+                                            enabled = !isProcessingTransfer && !isSaving,
+                                            shape = RoundedCornerShape(12.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(46.dp)
+                                                .testTag("btn_backup_json")
+                                        ) {
+                                            Icon(Icons.Filled.Backup, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = stringResource(R.string.action_backup_json),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                maxLines = 1
+                                            )
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                openRestoreLauncher.launch(
+                                                    arrayOf("application/json", "text/plain", "*/*")
+                                                )
+                                            },
+                                            enabled = !isProcessingTransfer && !isSaving,
+                                            shape = RoundedCornerShape(12.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(46.dp)
+                                                .testTag("btn_restore_json")
+                                        ) {
+                                            Icon(Icons.Filled.Restore, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = stringResource(R.string.action_restore_json),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         item(key = "head_of_kua_settings_card") {
                             Surface(
                                 shape = RoundedCornerShape(18.dp),
@@ -1187,7 +1604,22 @@ fun AdminDashboardScreen(
                 deletingSchedule = schedule
             },
             onSendWhatsApp = {
-                triggerWhatsAppReminder(schedule, reminderSettings.whatsappTemplate)
+                triggerWhatsAppReminder(
+                    schedule,
+                    ReminderRecipientType.MODIN,
+                    reminderSettings.whatsappTemplate,
+                    SmartReminderManager.resolveAdminWhatsappNumber(reminderSettings, staffAccounts),
+                    reminderSettings.resolvedAdminWhatsappApp()
+                )
+            },
+            onSendWhatsAppPenghulu = {
+                triggerWhatsAppReminder(
+                    schedule,
+                    ReminderRecipientType.PENGHULU,
+                    reminderSettings.whatsappPenghuluTemplate,
+                    SmartReminderManager.resolveAdminWhatsappNumber(reminderSettings, staffAccounts),
+                    reminderSettings.resolvedAdminWhatsappApp()
+                )
             },
             onSendPhoneNotif = {
                 triggerPhoneNotification(schedule)
@@ -1200,8 +1632,8 @@ fun AdminDashboardScreen(
             schedule = schedule,
             isSaving = isSaving,
             onDismiss = { verifyingSchedule = null },
-            onConfirm = { newStatus, docsComplete, note ->
-                onUpdateVerification(schedule.id, newStatus, docsComplete, note) {
+            onConfirm = { newStatus, checklist, docsComplete, note ->
+                onUpdateVerification(schedule.id, newStatus, checklist, docsComplete, note) {
                     verifyingSchedule = null
                 }
             }
@@ -1214,7 +1646,7 @@ fun AdminDashboardScreen(
             villages = villages,
             staffAccounts = staffAccounts,
             reminderSettings = reminderSettings,
-            existingScheduleCount = schedules.size,
+            allSchedules = schedules,
             isSaving = isSaving,
             onDismiss = {
                 showScheduleForm = false
@@ -1259,13 +1691,14 @@ fun AdminDashboardScreen(
             initialVillageCode = selectedAccountVillageFilter,
             isSaving = isSaving,
             onDismiss = { showAddModinDialog = false },
-            onCreate = { village, username, password, officerName, whatsappNumber, active ->
+            onCreate = { village, username, password, officerName, whatsappNumber, googleEmail, active ->
                 onCreateModinAccount(
                     village,
                     username,
                     password,
                     officerName,
                     whatsappNumber,
+                    googleEmail,
                     active
                 ) {
                     showAddModinDialog = false
@@ -1279,12 +1712,13 @@ fun AdminDashboardScreen(
             existingAccounts = staffAccounts,
             isSaving = isSaving,
             onDismiss = { showAddPenghuluDialog = false },
-            onCreate = { username, password, officerName, whatsappNumber, active, isWaliHakim ->
+            onCreate = { username, password, officerName, whatsappNumber, googleEmail, active, isWaliHakim ->
                 onCreatePenghuluAccount(
                     username,
                     password,
                     officerName,
                     whatsappNumber,
+                    googleEmail,
                     active,
                     isWaliHakim
                 ) {
@@ -1300,18 +1734,52 @@ fun AdminDashboardScreen(
             villages = villages,
             isSaving = isSaving,
             onDismiss = { editingAccount = null },
-            onSave = { newUsername, newPassword, officerName, whatsappNumber, active, newVillage, isWaliHakim ->
+            onSave = { newUsername, newPassword, officerName, whatsappNumber, googleEmail, active, newVillage, isWaliHakim ->
                 onUpdateStaffAccount(
                     account,
                     newUsername,
                     newPassword,
                     officerName,
                     whatsappNumber,
+                    googleEmail,
                     active,
                     newVillage,
                     isWaliHakim
                 ) {
                     editingAccount = null
+                }
+            }
+        )
+    }
+
+    pendingRestorePayload?.let { payload ->
+        AlertDialog(
+            onDismissRequest = { pendingRestorePayload = null },
+            title = { Text("Pulihkan Data Backup?") },
+            text = {
+                Text(
+                    "File backup berisi ${payload.schedules.size} jadwal nikah, ${payload.staffAccounts.size} akun petugas, dan ${payload.villages.size} wilayah desa. Data akan digabungkan ke perangkat ini dan disinkronkan ke cloud."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onRestoreBackup(payload) {
+                            pendingRestorePayload = null
+                        }
+                    },
+                    enabled = !isSaving,
+                    modifier = Modifier.testTag("confirm_restore_json_button")
+                ) {
+                    Text("Pulihkan Data")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { pendingRestorePayload = null },
+                    enabled = !isSaving
+                ) {
+                    Text("Batal")
                 }
             }
         )
@@ -1505,9 +1973,17 @@ private fun StaffAccountAdminCard(
                 )
                 Text(
                     text = if (account.whatsappNumber.isNotBlank()) {
-                        "WA Reminder: ${account.whatsappNumber}"
+                        if (isAdmin) {
+                            "WA Pengirim Smart Reminder: ${account.whatsappNumber}"
+                        } else {
+                            "WA Reminder: ${account.whatsappNumber}"
+                        }
                     } else {
-                        "WA Reminder: Belum diisi"
+                        if (isAdmin) {
+                            "WA Pengirim Smart Reminder: Belum diisi"
+                        } else {
+                            "WA Reminder: Belum diisi"
+                        }
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = if (account.whatsappNumber.isNotBlank()) {
@@ -1516,6 +1992,28 @@ private fun StaffAccountAdminCard(
                         MaterialTheme.colorScheme.outline
                     }
                 )
+            }
+
+            if (account.googleEmail.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CloudDone,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Text(
+                        text = "Cloud Sync: ${account.googleEmail}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
