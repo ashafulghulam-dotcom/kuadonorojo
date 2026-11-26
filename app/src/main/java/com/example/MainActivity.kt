@@ -64,6 +64,7 @@ import com.example.util.GoogleAuthHelper.authStateFlow
 import com.example.util.SmartReminderManager
 import com.example.viewmodel.KuaViewModel
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -87,6 +88,20 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun KuaAppRoot() {
+    val context = LocalContext.current
+    val isFirebaseReady = remember(context) {
+        try {
+            FirebaseApp.getApps(context).isNotEmpty()
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    if (!isFirebaseReady) {
+        KuaAuthenticatedRoot(user = null)
+        return
+    }
+
     val authFlow = remember { Firebase.auth.authStateFlow() }
     val currentUser by authFlow.collectAsState(initial = Firebase.auth.currentUser)
 
@@ -101,31 +116,40 @@ fun KuaAppRoot() {
 }
 
 @Composable
-private fun KuaAuthenticatedRoot(user: FirebaseUser) {
+private fun KuaAuthenticatedRoot(user: FirebaseUser?) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var showLogoutDialog by remember { mutableStateOf(false) }
+    val workspaceKey = user?.uid ?: "local_device_workspace"
 
     val viewModel: KuaViewModel = viewModel(
-        key = user.uid,
+        key = workspaceKey,
         factory = viewModelFactory {
             initializer {
                 val app = checkNotNull(this[APPLICATION_KEY]) {
                     "APPLICATION_KEY missing from CreationExtras"
                 }
                 val dao = KuaLocalDatabase.getInstance(app).kuaDao()
-                val firestore = FirebaseFirestore.getInstance(
-                    app.getString(R.string.firestore_database_id)
+                val dbIdRes = app.resources.getIdentifier(
+                    "firestore_database_id",
+                    "string",
+                    app.packageName
                 )
-                val syncService = KuaFirestoreSyncService(firestore)
+                val dbId = if (dbIdRes != 0) app.getString(dbIdRes).trim() else ""
+                val syncService = if (user != null && dbId.isNotBlank()) {
+                    val firestore = FirebaseFirestore.getInstance(dbId)
+                    KuaFirestoreSyncService(firestore)
+                } else {
+                    null
+                }
                 val repository = KuaRepository(dao = dao, firestoreSync = syncService)
                 val sessionManager = KuaSessionManager(app)
                 KuaViewModel(
                     repository = repository,
                     sessionManager = sessionManager,
                     firestoreSync = syncService,
-                    currentUserId = user.uid,
-                    currentUserEmail = user.email.orEmpty(),
+                    currentUserId = workspaceKey,
+                    currentUserEmail = user?.email.orEmpty(),
                     onScheduleReminderAlarm = { settings ->
                         BackgroundReminderScheduler.scheduleDailyReminder(app, settings)
                     }
@@ -152,8 +176,10 @@ private fun KuaAuthenticatedRoot(user: FirebaseUser) {
     val signOutGoogleAndStaff: () -> Unit = {
         showLogoutDialog = false
         viewModel.logoutStaffSession()
-        scope.launch {
-            GoogleAuthHelper.signOutGoogle(context)
+        if (user != null) {
+            scope.launch {
+                GoogleAuthHelper.signOutGoogle(context)
+            }
         }
     }
 
@@ -164,7 +190,7 @@ private fun KuaAuthenticatedRoot(user: FirebaseUser) {
                 staffAccountsState = staffAccountsState,
                 loginError = loginError,
                 rememberSessionDefault = rememberSessionDefault,
-                connectedGoogleEmail = user.email.orEmpty(),
+                connectedGoogleEmail = user?.email.orEmpty(),
                 onSignOutGoogle = signOutGoogleAndStaff,
                 onClearError = viewModel::clearLoginError,
                 onLogin = viewModel::loginWithCredentials
@@ -257,7 +283,11 @@ private fun KuaAuthenticatedRoot(user: FirebaseUser) {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Pilih keluar dari akun petugas saja (tetap terhubung ke cloud ${user.email.orEmpty()}) atau keluar penuh dari akun Google.",
+                        text = if (user != null) {
+                            "Pilih keluar dari akun petugas saja (tetap terhubung ke cloud ${user.email.orEmpty()}) atau keluar penuh dari akun Google."
+                        } else {
+                            "Anda akan keluar dari akun petugas saat ini dan kembali ke halaman Masuk Akun."
+                        },
                         style = MaterialTheme.typography.bodySmall
                     )
                     Button(
@@ -269,18 +299,20 @@ private fun KuaAuthenticatedRoot(user: FirebaseUser) {
                             .fillMaxWidth()
                             .testTag("logout_staff_only_button")
                     ) {
-                        Text("Ganti Akun Petugas")
+                        Text(if (user != null) "Ganti Akun Petugas" else "Keluar Akun Petugas")
                     }
-                    OutlinedButton(
-                        onClick = signOutGoogleAndStaff,
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("logout_google_and_staff_button")
-                    ) {
-                        Text("Keluar Google & Petugas")
+                    if (user != null) {
+                        OutlinedButton(
+                            onClick = signOutGoogleAndStaff,
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("logout_google_and_staff_button")
+                        ) {
+                            Text("Keluar Google & Petugas")
+                        }
                     }
                 }
             },

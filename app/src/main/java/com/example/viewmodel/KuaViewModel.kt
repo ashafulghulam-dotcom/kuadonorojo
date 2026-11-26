@@ -34,7 +34,7 @@ import java.util.Locale
 class KuaViewModel(
     private val repository: KuaRepository,
     private val sessionManager: KuaSessionManager,
-    private val firestoreSync: KuaFirestoreSyncService,
+    private val firestoreSync: KuaFirestoreSyncService? = null,
     private val currentUserId: String,
     private val currentUserEmail: String,
     private val onScheduleReminderAlarm: (ReminderSettings) -> Unit = {}
@@ -73,7 +73,7 @@ class KuaViewModel(
     private val _cloudSyncStatus = MutableStateFlow(
         CloudSyncStatus(
             userEmail = currentUserEmail,
-            isSyncing = true,
+            isSyncing = firestoreSync != null,
             isOnlineSynced = false
         )
     )
@@ -86,29 +86,40 @@ class KuaViewModel(
             repository.ensureDefaultDonorojoData()
             restoreSavedStaffSessionIfAvailable()
             onScheduleReminderAlarm(repository.getReminderSettingsOnce())
-            // Ensure initial cloud profile & workspace mirror are up-to-date
-            firestoreSync.upsertUserProfile()
-            startCloudRealtimeSync()
-            // Perform one initial background push of local data so first-time users immediately sync to cloud
-            val syncResult = repository.syncAllLocalToCloud()
-            _cloudSyncStatus.update { current ->
-                syncResult.fold(
-                    onSuccess = { count ->
-                        current.copy(
-                            isSyncing = false,
-                            isOnlineSynced = true,
-                            syncedScheduleCount = maxOf(current.syncedScheduleCount, count),
-                            lastSyncedAtMillis = System.currentTimeMillis(),
-                            errorMessage = null
-                        )
-                    },
-                    onFailure = { err ->
-                        current.copy(
-                            isSyncing = false,
-                            errorMessage = err.localizedMessage
-                        )
-                    }
-                )
+            val sync = firestoreSync
+            if (sync != null) {
+                // Ensure initial cloud profile & workspace mirror are up-to-date
+                sync.upsertUserProfile()
+                startCloudRealtimeSync(sync)
+                // Perform one initial background push of local data so first-time users immediately sync to cloud
+                val syncResult = repository.syncAllLocalToCloud()
+                _cloudSyncStatus.update { current ->
+                    syncResult.fold(
+                        onSuccess = { count ->
+                            current.copy(
+                                isSyncing = false,
+                                isOnlineSynced = true,
+                                syncedScheduleCount = maxOf(current.syncedScheduleCount, count),
+                                lastSyncedAtMillis = System.currentTimeMillis(),
+                                errorMessage = null
+                            )
+                        },
+                        onFailure = { err ->
+                            current.copy(
+                                isSyncing = false,
+                                errorMessage = err.localizedMessage
+                            )
+                        }
+                    )
+                }
+            } else {
+                _cloudSyncStatus.update { current ->
+                    current.copy(
+                        isSyncing = false,
+                        isOnlineSynced = false,
+                        errorMessage = null
+                    )
+                }
             }
         }
         viewModelScope.launch {
@@ -129,10 +140,10 @@ class KuaViewModel(
         )
     }
 
-    private fun startCloudRealtimeSync() {
+    private fun startCloudRealtimeSync(sync: KuaFirestoreSyncService) {
         // Owned villages
         viewModelScope.launch {
-            firestoreSync.observeOwnedVillages(currentUserId)
+            sync.observeOwnedVillages(currentUserId)
                 .catch { err ->
                     if (err is CancellationException) throw err
                     _cloudSyncStatus.update { it.copy(isSyncing = false, errorMessage = err.localizedMessage) }
@@ -144,7 +155,7 @@ class KuaViewModel(
         }
         // Shared villages (invited Modin/Penghulu)
         viewModelScope.launch {
-            firestoreSync.observeSharedVillages()
+            sync.observeSharedVillages()
                 .catch { err ->
                     if (err is CancellationException) throw err
                 }
@@ -155,7 +166,7 @@ class KuaViewModel(
         }
         // Owned staff accounts
         viewModelScope.launch {
-            firestoreSync.observeOwnedStaffAccounts(currentUserId)
+            sync.observeOwnedStaffAccounts(currentUserId)
                 .catch { err ->
                     if (err is CancellationException) throw err
                     _cloudSyncStatus.update { it.copy(isSyncing = false, errorMessage = err.localizedMessage) }
@@ -167,7 +178,7 @@ class KuaViewModel(
         }
         // Invited staff accounts (cross-device Modin/Penghulu)
         viewModelScope.launch {
-            firestoreSync.observeInvitedStaffAccounts()
+            sync.observeInvitedStaffAccounts()
                 .catch { err ->
                     if (err is CancellationException) throw err
                 }
@@ -178,7 +189,7 @@ class KuaViewModel(
         }
         // Owned reminder settings
         viewModelScope.launch {
-            firestoreSync.observeOwnedReminderSettings(currentUserId)
+            sync.observeOwnedReminderSettings(currentUserId)
                 .catch { err ->
                     if (err is CancellationException) throw err
                 }
@@ -192,7 +203,7 @@ class KuaViewModel(
         }
         // Shared reminder settings
         viewModelScope.launch {
-            firestoreSync.observeSharedReminderSettings()
+            sync.observeSharedReminderSettings()
                 .catch { err ->
                     if (err is CancellationException) throw err
                 }
@@ -206,7 +217,7 @@ class KuaViewModel(
         }
         // Owned marriage schedules
         viewModelScope.launch {
-            firestoreSync.observeOwnedSchedules(currentUserId)
+            sync.observeOwnedSchedules(currentUserId)
                 .catch { err ->
                     if (err is CancellationException) throw err
                     _cloudSyncStatus.update { it.copy(isSyncing = false, errorMessage = err.localizedMessage) }
@@ -218,7 +229,7 @@ class KuaViewModel(
         }
         // Shared marriage schedules (invited Modin/Penghulu)
         viewModelScope.launch {
-            firestoreSync.observeSharedSchedules()
+            sync.observeSharedSchedules()
                 .catch { err ->
                     if (err is CancellationException) throw err
                 }
@@ -400,6 +411,10 @@ class KuaViewModel(
     }
 
     fun triggerManualCloudSync() {
+        if (firestoreSync == null) {
+            _actionMessage.value = "Mode penyimpanan lokal aktif. Gunakan fitur Backup & Restore JSON untuk berbagi data antar-HP."
+            return
+        }
         viewModelScope.launch {
             _cloudSyncStatus.update { it.copy(isSyncing = true, errorMessage = null) }
             val result = repository.syncAllLocalToCloud()

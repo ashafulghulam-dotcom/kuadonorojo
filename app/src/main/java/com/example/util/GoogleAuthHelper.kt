@@ -9,7 +9,6 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
-import com.example.R
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -43,8 +42,17 @@ object GoogleAuthHelper {
         awaitClose { removeAuthStateListener(listener) }
     }
 
+    private fun resolveDefaultWebClientId(context: Context): String {
+        val resId = context.resources.getIdentifier(
+            "default_web_client_id",
+            "string",
+            context.packageName
+        )
+        return if (resId != 0) context.getString(resId).trim() else ""
+    }
+
     suspend fun attemptAutoSignIn(context: Context): GoogleSignInOutcome {
-        val serverClientId = context.getString(R.string.default_web_client_id)
+        val serverClientId = resolveDefaultWebClientId(context)
         if (serverClientId.isBlank()) {
             return GoogleSignInOutcome.Failure("Konfigurasi Google Sign-In tidak ditemukan.")
         }
@@ -93,7 +101,7 @@ object GoogleAuthHelper {
     }
 
     suspend fun onGoogleSignInClicked(context: Context): GoogleSignInOutcome {
-        val serverClientId = context.getString(R.string.default_web_client_id)
+        val serverClientId = resolveDefaultWebClientId(context)
         if (serverClientId.isBlank()) {
             return GoogleSignInOutcome.Failure("Konfigurasi Google Sign-In tidak tersedia.")
         }
