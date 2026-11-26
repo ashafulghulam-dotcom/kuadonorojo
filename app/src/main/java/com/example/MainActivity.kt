@@ -112,7 +112,8 @@ fun KuaAppRoot() {
                     onCreateModinAccount = viewModel::createModinAccount,
                     onUpdateStaffAccount = viewModel::updateStaffAccount,
                     onDeleteStaffAccount = viewModel::deleteStaffAccount,
-                    onSaveReminderSettings = viewModel::saveReminderSettings
+                    onSaveReminderSettings = viewModel::saveReminderSettings,
+                    onSaveHeadOfKuaSettings = viewModel::saveHeadOfKuaSettings
                 )
             } else {
                 ModinDashboardScreen(
@@ -151,7 +152,7 @@ private fun KuaFullWhiteSplashOverlay() {
             painter = painterResource(id = R.drawable.ic_logo_kua_resmi),
             contentDescription = stringResource(R.string.cd_app_emblem),
             contentScale = ContentScale.Fit,
-            modifier = Modifier.size(148.dp)
+            modifier = Modifier.size(136.dp)
         )
     }
 }

@@ -281,6 +281,34 @@ class KuaViewModel(
         }
     }
 
+    fun saveHeadOfKuaSettings(
+        title: String,
+        name: String,
+        nip: String,
+        onSuccess: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            _isSaving.value = true
+            val officerName = _activeStaffAccount.value?.officerName ?: "Admin KUA Donorojo"
+            val result = repository.saveHeadOfKuaSettings(
+                title = title,
+                name = name,
+                nip = nip,
+                updatedByName = officerName
+            )
+            _isSaving.value = false
+            result.fold(
+                onSuccess = {
+                    _actionMessage.value = "Data Kepala KUA Donorojo berhasil disimpan."
+                    onSuccess()
+                },
+                onFailure = { error ->
+                    _actionMessage.value = error.message ?: "Gagal menyimpan data Kepala KUA."
+                }
+            )
+        }
+    }
+
     fun saveSchedule(
         draft: ScheduleDraft,
         village: Village,

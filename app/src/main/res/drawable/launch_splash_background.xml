@@ -6,8 +6,8 @@
         </shape>
     </item>
     <item
-        android:width="148dp"
-        android:height="148dp"
+        android:width="140dp"
+        android:height="133dp"
         android:drawable="@drawable/ic_logo_kua_resmi"
         android:gravity="center" />
 </layer-list>

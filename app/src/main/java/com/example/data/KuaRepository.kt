@@ -85,11 +85,18 @@ class KuaRepository(
                     remindThreeDaysBefore = false,
                     reminderTime = "07:00",
                     whatsappTemplate = ReminderSettings.DEFAULT_WA_TEMPLATE,
+                    headOfKuaTitle = ReminderSettings.DEFAULT_HEAD_OF_KUA_TITLE,
+                    headOfKuaName = "",
+                    headOfKuaNip = "",
                     updatedByName = "Admin KUA Donorojo",
                     updatedAt = now
                 )
             )
         }
+
+        dao.normalizeSumberrejoVillage()
+        dao.normalizeSumberrejoStaffAccounts()
+        dao.normalizeSumberrejoSchedules()
     }
 
     fun observeAllVillages(): Flow<List<Village>> =
@@ -173,6 +180,9 @@ class KuaRepository(
                     remindThreeDaysBefore = entity.remindThreeDaysBefore,
                     reminderTime = entity.reminderTime,
                     whatsappTemplate = entity.whatsappTemplate,
+                    headOfKuaTitle = entity.headOfKuaTitle.ifBlank { ReminderSettings.DEFAULT_HEAD_OF_KUA_TITLE },
+                    headOfKuaName = entity.headOfKuaName,
+                    headOfKuaNip = entity.headOfKuaNip,
                     updatedByName = entity.updatedByName,
                     updatedAt = entity.updatedAt
                 )
@@ -356,8 +366,57 @@ class KuaRepository(
                     remindThreeDaysBefore = settings.remindThreeDaysBefore,
                     reminderTime = cleanTime,
                     whatsappTemplate = cleanTemplate,
+                    headOfKuaTitle = settings.headOfKuaTitle.trim().ifBlank { ReminderSettings.DEFAULT_HEAD_OF_KUA_TITLE },
+                    headOfKuaName = settings.headOfKuaName.trim().take(120),
+                    headOfKuaNip = settings.headOfKuaNip.trim().take(40),
                     updatedByName = updatedByName.take(100),
                     updatedAt = System.currentTimeMillis()
+                )
+            )
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun saveHeadOfKuaSettings(
+        title: String,
+        name: String,
+        nip: String,
+        updatedByName: String
+    ): Result<Unit> {
+        val cleanTitle = title.trim().ifBlank { ReminderSettings.DEFAULT_HEAD_OF_KUA_TITLE }
+        val cleanName = name.trim()
+        val cleanNip = nip.trim()
+
+        if (cleanTitle.length > 100) {
+            return Result.failure(IllegalArgumentException("Jabatan maksimal 100 karakter."))
+        }
+        if (cleanName.length !in 2..120) {
+            return Result.failure(IllegalArgumentException("Nama Kepala KUA harus 2–120 karakter."))
+        }
+        if (cleanNip.length > 40) {
+            return Result.failure(IllegalArgumentException("NIP Kepala KUA maksimal 40 karakter."))
+        }
+
+        return try {
+            val current = dao.getReminderSettingsOnce()
+            val now = System.currentTimeMillis()
+            dao.upsertReminderSettings(
+                ReminderSettingsEntity(
+                    id = ReminderSettings.GLOBAL_DOC_ID,
+                    autoPhoneNotifEnabled = current?.autoPhoneNotifEnabled ?: true,
+                    whatsappReminderEnabled = current?.whatsappReminderEnabled ?: true,
+                    remindOnWeddingDay = current?.remindOnWeddingDay ?: true,
+                    remindOneDayBefore = current?.remindOneDayBefore ?: true,
+                    remindThreeDaysBefore = current?.remindThreeDaysBefore ?: false,
+                    reminderTime = current?.reminderTime ?: "07:00",
+                    whatsappTemplate = current?.whatsappTemplate ?: ReminderSettings.DEFAULT_WA_TEMPLATE,
+                    headOfKuaTitle = cleanTitle,
+                    headOfKuaName = cleanName,
+                    headOfKuaNip = cleanNip,
+                    updatedByName = updatedByName.take(100),
+                    updatedAt = now
                 )
             )
             Result.success(Unit)

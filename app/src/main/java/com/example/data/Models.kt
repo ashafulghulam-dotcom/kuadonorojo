@@ -115,11 +115,15 @@ data class ReminderSettings(
     val remindThreeDaysBefore: Boolean = false,
     val reminderTime: String = "07:00",
     val whatsappTemplate: String = DEFAULT_WA_TEMPLATE,
+    val headOfKuaTitle: String = DEFAULT_HEAD_OF_KUA_TITLE,
+    val headOfKuaName: String = "",
+    val headOfKuaNip: String = "",
     val updatedByName: String = "",
     val updatedAt: Long = System.currentTimeMillis()
 ) {
     companion object {
         const val GLOBAL_DOC_ID = "global_config"
+        const val DEFAULT_HEAD_OF_KUA_TITLE = "Kepala KUA Donorojo"
         const val DEFAULT_WA_TEMPLATE =
             "Assalamu'alaikum Wr. Wb.\nYth. {modin} ({desa}),\n\nMengingatkan jadwal akad nikah:\n• Pengantin: {pengantin}\n• No. Daftar: {no_daftar}\n• Tanggal: {tanggal}\n• Jam: {jam} WIB\n• Lokasi: {lokasi}\n• Modin: {modin}\n• Penghulu: {penghulu}\n• Status Validasi KUA: {status}\n\nMohon kesiapan pendampingan di wilayah desa. Terima kasih.\n— KUA Donorojo"
     }
@@ -244,7 +248,7 @@ object DonorojoOfficialDirectory {
         OfficialModinPreset(
             accountId = "modin_sumberrejo",
             villageCode = "sumberrejo",
-            villageName = "Desa Sumberrejo (Sumberejo)",
+            villageName = "Desa Sumberrejo",
             defaultUsername = "modin.sumberrejo",
             defaultPassword = "donorojo06",
             defaultOfficerName = "Modin Desa Sumberrejo"

@@ -30,9 +30,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.FactCheck
@@ -43,6 +45,7 @@ import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.Calculate
 import androidx.compose.material.icons.outlined.CalendarMonth
@@ -151,7 +154,8 @@ fun AdminDashboardScreen(
         onSuccess: () -> Unit
     ) -> Unit,
     onDeleteStaffAccount: (StaffAccount, () -> Unit) -> Unit,
-    onSaveReminderSettings: (ReminderSettings) -> Unit
+    onSaveReminderSettings: (ReminderSettings) -> Unit,
+    onSaveHeadOfKuaSettings: (title: String, name: String, nip: String, onSuccess: () -> Unit) -> Unit
 ) {
     val context = LocalContext.current
     var selectedTab by remember { mutableStateOf(AdminTab.SCHEDULES) }
@@ -168,6 +172,8 @@ fun AdminDashboardScreen(
     var showAddModinDialog by remember { mutableStateOf(false) }
     var editingAccount by remember { mutableStateOf<StaffAccount?>(null) }
     var deletingAccount by remember { mutableStateOf<StaffAccount?>(null) }
+    var showMonthlyReportSheet by remember { mutableStateOf(false) }
+    var showHeadOfKuaDialog by remember { mutableStateOf(false) }
 
     var hasNotifPermission by remember {
         mutableStateOf(SmartReminderManager.hasNotificationPermission(context))
@@ -421,7 +427,8 @@ fun AdminDashboardScreen(
                         isAdminAccount = true,
                         currentMode = DashboardMode.ADMIN_KUA,
                         onSwitchMode = onSwitchMode,
-                        onSignOut = onLogoutStaff
+                        onSignOut = onLogoutStaff,
+                        onOpenMonthlyReport = { showMonthlyReportSheet = true }
                     )
                 }
 
@@ -436,6 +443,81 @@ fun AdminDashboardScreen(
                 when (selectedTab) {
                     AdminTab.SCHEDULES, AdminTab.VERIFICATION -> {
                         if (selectedTab == AdminTab.SCHEDULES) {
+                            item(key = "monthly_report_quick_card") {
+                                Surface(
+                                    onClick = { showMonthlyReportSheet = true },
+                                    shape = RoundedCornerShape(18.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("card_open_monthly_report")
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.PictureAsPdf,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier
+                                                    .padding(10.dp)
+                                                    .size(22.dp)
+                                            )
+                                        }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Download Laporan Bulanan (A4)",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "PDF siap cetak ukuran A4 vertikal dengan kop resmi KUA Donorojo & rekap 8 desa.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = MaterialTheme.colorScheme.primary
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Download,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "A4",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onPrimary
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             item(key = "today_spotlight") {
                                 TodayWeddingsSpotlightSection(
                                     todaySchedules = todaySchedules,
@@ -582,6 +664,112 @@ fun AdminDashboardScreen(
                     }
 
                     AdminTab.ACCOUNTS -> {
+                        item(key = "head_of_kua_settings_card") {
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(
+                                    1.2.dp,
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("card_kepala_kua_settings")
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Badge,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier
+                                                    .padding(10.dp)
+                                                    .size(22.dp)
+                                            )
+                                        }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Pengaturan Kepala KUA Donorojo",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "Digunakan otomatis pada tanda tangan Laporan Bulanan A4.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                                        ) {
+                                            Text(
+                                                text = reminderSettings.headOfKuaTitle.ifBlank {
+                                                    ReminderSettings.DEFAULT_HEAD_OF_KUA_TITLE
+                                                },
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            Text(
+                                                text = reminderSettings.headOfKuaName.ifBlank {
+                                                    "Nama Kepala KUA belum diatur"
+                                                },
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = if (reminderSettings.headOfKuaNip.isNotBlank()) {
+                                                    "NIP. ${reminderSettings.headOfKuaNip}"
+                                                } else {
+                                                    "NIP. Belum diatur"
+                                                },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    Button(
+                                        onClick = { showHeadOfKuaDialog = true },
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(46.dp)
+                                            .testTag("btn_open_kepala_kua_settings")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Edit,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Atur Nama & NIP Kepala KUA")
+                                    }
+                                }
+                            }
+                        }
+
                         item(key = "accounts_intro") {
                             val totalModinCount = staffAccounts.count { it.resolvedRole() == UserRole.MODIN }
                             Surface(
@@ -870,6 +1058,30 @@ fun AdminDashboardScreen(
             },
             dismissButton = {
                 TextButton(onClick = { deletingAccount = null }) { Text("Batal") }
+            }
+        )
+    }
+
+    if (showMonthlyReportSheet) {
+        MonthlyReportSheet(
+            reminderSettings = reminderSettings,
+            villages = villages,
+            schedules = schedules,
+            onOpenHeadOfKuaSettings = { showHeadOfKuaDialog = true },
+            onDismiss = { showMonthlyReportSheet = false },
+            onPostMessage = onPostMessage
+        )
+    }
+
+    if (showHeadOfKuaDialog) {
+        KepalaKuaSettingsDialog(
+            settings = reminderSettings,
+            isSaving = isSaving,
+            onDismiss = { showHeadOfKuaDialog = false },
+            onSave = { title, name, nip ->
+                onSaveHeadOfKuaSettings(title, name, nip) {
+                    showHeadOfKuaDialog = false
+                }
             }
         )
     }

@@ -74,6 +74,9 @@ data class ReminderSettingsEntity(
     val remindThreeDaysBefore: Boolean,
     val reminderTime: String,
     val whatsappTemplate: String,
+    val headOfKuaTitle: String = ReminderSettings.DEFAULT_HEAD_OF_KUA_TITLE,
+    val headOfKuaName: String = "",
+    val headOfKuaNip: String = "",
     val updatedByName: String,
     val updatedAt: Long
 )
@@ -91,6 +94,15 @@ interface KuaDao {
 
     @Query("UPDATE villages SET modinName = :modinName, modinPhone = :modinPhone, updatedAt = :updatedAt WHERE code = :code")
     suspend fun updateVillageModin(code: String, modinName: String, modinPhone: String, updatedAt: Long)
+
+    @Query("UPDATE villages SET name = 'Desa Sumberrejo' WHERE code = 'sumberrejo' AND name != 'Desa Sumberrejo'")
+    suspend fun normalizeSumberrejoVillage()
+
+    @Query("UPDATE staff_accounts SET villageName = 'Desa Sumberrejo' WHERE villageId = 'sumberrejo' AND villageName != 'Desa Sumberrejo'")
+    suspend fun normalizeSumberrejoStaffAccounts()
+
+    @Query("UPDATE marriage_schedules SET villageName = 'Desa Sumberrejo' WHERE villageId = 'sumberrejo' AND villageName != 'Desa Sumberrejo'")
+    suspend fun normalizeSumberrejoSchedules()
 
     @Query("SELECT * FROM staff_accounts")
     fun observeStaffAccounts(): Flow<List<StaffAccountEntity>>
@@ -138,6 +150,9 @@ interface KuaDao {
     @Query("SELECT * FROM reminder_settings WHERE id = :id LIMIT 1")
     fun observeReminderSettings(id: String = ReminderSettings.GLOBAL_DOC_ID): Flow<ReminderSettingsEntity?>
 
+    @Query("SELECT * FROM reminder_settings WHERE id = :id LIMIT 1")
+    suspend fun getReminderSettingsOnce(id: String = ReminderSettings.GLOBAL_DOC_ID): ReminderSettingsEntity?
+
     @Query("SELECT COUNT(*) FROM reminder_settings")
     suspend fun countReminderSettings(): Int
 
@@ -152,7 +167,7 @@ interface KuaDao {
         MarriageScheduleEntity::class,
         ReminderSettingsEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class KuaLocalDatabase : RoomDatabase() {
@@ -169,6 +184,20 @@ abstract class KuaLocalDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE reminder_settings ADD COLUMN headOfKuaTitle TEXT NOT NULL DEFAULT 'Kepala KUA Donorojo'"
+                )
+                db.execSQL(
+                    "ALTER TABLE reminder_settings ADD COLUMN headOfKuaName TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "ALTER TABLE reminder_settings ADD COLUMN headOfKuaNip TEXT NOT NULL DEFAULT ''"
+                )
+            }
+        }
+
         fun getInstance(context: Context): KuaLocalDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -176,7 +205,7 @@ abstract class KuaLocalDatabase : RoomDatabase() {
                     KuaLocalDatabase::class.java,
                     "kua_donorojo_local.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { INSTANCE = it }
             }

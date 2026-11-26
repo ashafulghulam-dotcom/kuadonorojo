@@ -24,4 +24,12 @@
     <string name="cd_toggle_password">Tampilkan atau sembunyikan password</string>
     <string name="cd_social_instagram">Buka Instagram resmi KUA Donorojo</string>
     <string name="cd_social_tiktok">Buka TikTok resmi KUA Donorojo</string>
+    <string name="report_monthly_title">Laporan Bulanan Siap Cetak</string>
+    <string name="report_monthly_subtitle">Format PDF ukuran A4 vertikal (210 × 297 mm)</string>
+    <string name="action_download_pdf_a4">Download PDF (A4 Vertikal)</string>
+    <string name="action_print_a4">Cetak A4</string>
+    <string name="action_save_as_folder">Pilih Folder</string>
+    <string name="cd_monthly_report">Buka menu download laporan bulanan A4</string>
+    <string name="cd_report_prev_year">Tahun sebelumnya</string>
+    <string name="cd_report_next_year">Tahun berikutnya</string>
 </resources>
