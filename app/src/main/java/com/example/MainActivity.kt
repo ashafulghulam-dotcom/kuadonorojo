@@ -25,7 +25,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -60,11 +60,11 @@ import com.example.ui.screens.StaffLoginScreen
 import com.example.ui.theme.KuaDonorojoTheme
 import com.example.util.BackgroundReminderScheduler
 import com.example.util.GoogleAuthHelper
-import com.example.util.GoogleAuthHelper.authStateFlow
 import com.example.util.SmartReminderManager
 import com.example.viewmodel.KuaViewModel
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -102,12 +102,22 @@ fun KuaAppRoot() {
         return
     }
 
-    val authFlow = remember { Firebase.auth.authStateFlow() }
-    val currentUser by authFlow.collectAsState(initial = Firebase.auth.currentUser)
+    var currentUser by remember { mutableStateOf(Firebase.auth.currentUser) }
+    DisposableEffect(Unit) {
+        val listener = FirebaseAuth.AuthStateListener { auth ->
+            currentUser = auth.currentUser
+        }
+        Firebase.auth.addAuthStateListener(listener)
+        onDispose { Firebase.auth.removeAuthStateListener(listener) }
+    }
 
     val user = currentUser
     if (user == null) {
-        CloudAuthScreen()
+        CloudAuthScreen(
+            onAuthSuccess = { signedInUser ->
+                currentUser = signedInUser
+            }
+        )
     } else {
         key(user.uid) {
             KuaAuthenticatedRoot(user = user)

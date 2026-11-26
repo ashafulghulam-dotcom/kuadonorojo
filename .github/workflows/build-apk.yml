@@ -66,18 +66,21 @@ jobs:
         run: |
           set -euo pipefail
           KEYSTORE_PATH="./debug.keystore"
+          KEYSTORE_SOURCE="existing"
+          KEYTOOL_BIN="keytool"
+          if [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME}/bin/keytool" ]; then
+            KEYTOOL_BIN="${JAVA_HOME}/bin/keytool"
+          fi
           if [ ! -f "$KEYSTORE_PATH" ]; then
             if [ -n "${DEBUG_KEYSTORE_BASE64_SECRET:-}" ]; then
               printf '%s' "$DEBUG_KEYSTORE_BASE64_SECRET" | tr -d '\r\n ' | base64 -d > "$KEYSTORE_PATH"
-              echo "Decoded debug keystore from GitHub Secret."
+              KEYSTORE_SOURCE="github-secret"
+              echo "Decoded debug keystore from GitHub Secret DEBUG_KEYSTORE_BASE64."
             elif [ -f "./debug.keystore.base64" ] && [ -s "./debug.keystore.base64" ]; then
               tr -d '\r\n ' < "./debug.keystore.base64" | base64 -d > "$KEYSTORE_PATH"
+              KEYSTORE_SOURCE="repo-file"
               echo "Decoded project debug keystore from debug.keystore.base64."
             else
-              KEYTOOL_BIN="keytool"
-              if [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME}/bin/keytool" ]; then
-                KEYTOOL_BIN="${JAVA_HOME}/bin/keytool"
-              fi
               "$KEYTOOL_BIN" -genkeypair \
                 -keystore "$KEYSTORE_PATH" \
                 -storepass android \
@@ -88,14 +91,22 @@ jobs:
                 -keysize 2048 \
                 -validity 10000 \
                 -noprompt >/dev/null
-              echo "Generated temporary debug keystore with keytool."
+              KEYSTORE_SOURCE="generated-fallback"
+              echo "::warning::debug.keystore.base64 and secret DEBUG_KEYSTORE_BASE64 were not found! Generated a temporary keystore with a NEW random SHA-1. Google Sign-In will fail unless this SHA-1 is registered in Firebase or DEBUG_KEYSTORE_BASE64 is added."
             fi
           fi
           if [ ! -f "$KEYSTORE_PATH" ] || [ ! -s "$KEYSTORE_PATH" ]; then
             echo "::error::Failed to prepare debug keystore at ${KEYSTORE_PATH}."
             exit 1
           fi
-          echo "Debug keystore is ready."
+          SHA1_FP="$("$KEYTOOL_BIN" -list -v -keystore "$KEYSTORE_PATH" -storepass android -alias androiddebugkey 2>/dev/null | sed -nE 's/^[[:space:]]*SHA1:[[:space:]]*//p' | head -n 1 || true)"
+          echo "Debug keystore source: ${KEYSTORE_SOURCE}"
+          echo "Debug keystore SHA-1: ${SHA1_FP:-unknown}"
+          {
+            echo "### Signing Keystore"
+            echo "- **Source:** \`${KEYSTORE_SOURCE}\`"
+            echo "- **SHA-1:** \`${SHA1_FP:-unknown}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Configure Firebase google-services.json
         env:

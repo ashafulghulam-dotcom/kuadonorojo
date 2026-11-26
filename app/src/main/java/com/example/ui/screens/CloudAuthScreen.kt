@@ -63,10 +63,13 @@ import com.example.ui.theme.OnErrorContainerLight
 import com.example.ui.theme.OutlineVariantSage
 import com.example.util.GoogleAuthHelper
 import com.example.util.GoogleSignInOutcome
+import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.launch
 
 @Composable
-fun CloudAuthScreen() {
+fun CloudAuthScreen(
+    onAuthSuccess: (FirebaseUser) -> Unit = {}
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isSigningIn by remember { mutableStateOf(false) }
@@ -74,10 +77,18 @@ fun CloudAuthScreen() {
 
     LaunchedEffect(Unit) {
         isSigningIn = true
-        val outcome = GoogleAuthHelper.attemptAutoSignIn(context)
-        isSigningIn = false
-        if (outcome is GoogleSignInOutcome.Failure) {
-            errorMessage = outcome.message
+        when (val outcome = GoogleAuthHelper.attemptAutoSignIn(context)) {
+            is GoogleSignInOutcome.Success -> {
+                isSigningIn = false
+                onAuthSuccess(outcome.user)
+            }
+            is GoogleSignInOutcome.Failure -> {
+                isSigningIn = false
+                errorMessage = outcome.message
+            }
+            is GoogleSignInOutcome.Cancelled -> {
+                isSigningIn = false
+            }
         }
     }
 
@@ -186,7 +197,7 @@ fun CloudAuthScreen() {
                                 Row(
                                     modifier = Modifier.padding(12.dp),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.Top
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.ErrorOutline,
@@ -208,10 +219,21 @@ fun CloudAuthScreen() {
                                 scope.launch {
                                     errorMessage = null
                                     isSigningIn = true
-                                    val outcome = GoogleAuthHelper.onGoogleSignInClicked(context)
-                                    isSigningIn = false
-                                    if (outcome is GoogleSignInOutcome.Failure) {
-                                        errorMessage = outcome.message
+                                    when (val outcome = GoogleAuthHelper.onGoogleSignInClicked(context)) {
+                                        is GoogleSignInOutcome.Success -> {
+                                            isSigningIn = false
+                                            onAuthSuccess(outcome.user)
+                                        }
+                                        is GoogleSignInOutcome.Failure -> {
+                                            isSigningIn = false
+                                            errorMessage = outcome.message
+                                        }
+                                        is GoogleSignInOutcome.Cancelled -> {
+                                            isSigningIn = false
+                                            if (!outcome.hint.isNullOrBlank()) {
+                                                errorMessage = outcome.hint
+                                            }
+                                        }
                                     }
                                 }
                             },
