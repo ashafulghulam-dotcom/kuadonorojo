@@ -142,7 +142,42 @@ fun ScheduleFormSheet(
     var locationAddress by remember {
         mutableStateOf(existingSchedule?.locationAddress ?: "Balai Nikah KUA Donorojo")
     }
-    var penghuluName by remember { mutableStateOf(existingSchedule?.penghuluName ?: "") }
+    val activePenghulus = remember(staffAccounts) {
+        staffAccounts.filter { it.resolvedRole() == UserRole.PENGHULU && it.active }
+    }
+
+    val initialPenghuluAccount = remember(existingSchedule, staffAccounts) {
+        val pId = existingSchedule?.penghuluAccountId.orEmpty()
+        val pName = existingSchedule?.penghuluName.orEmpty()
+        when {
+            pId.isNotBlank() -> staffAccounts.firstOrNull { it.id == pId }
+            pName.isNotBlank() -> staffAccounts.firstOrNull {
+                it.resolvedRole() == UserRole.PENGHULU && it.officerName.equals(pName, ignoreCase = true)
+            }
+            else -> null
+        }
+    }
+
+    var selectedPenghuluId by remember {
+        mutableStateOf(initialPenghuluAccount?.id ?: existingSchedule?.penghuluAccountId.orEmpty())
+    }
+    var useManualPenghulu by remember {
+        mutableStateOf(
+            existingSchedule != null &&
+                existingSchedule.penghuluName.isNotBlank() &&
+                initialPenghuluAccount == null
+        )
+    }
+    var manualPenghuluName by remember {
+        mutableStateOf(
+            if (existingSchedule != null && initialPenghuluAccount == null) {
+                existingSchedule.penghuluName
+            } else {
+                ""
+            }
+        )
+    }
+
     var validationStatus by remember {
         mutableStateOf(existingSchedule?.resolvedStatus() ?: ValidationStatus.MENUNGGU)
     }
@@ -151,6 +186,7 @@ fun ScheduleFormSheet(
 
     var villageDropdownExpanded by remember { mutableStateOf(false) }
     var modinDropdownExpanded by remember { mutableStateOf(false) }
+    var penghuluDropdownExpanded by remember { mutableStateOf(false) }
     var statusDropdownExpanded by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
@@ -158,6 +194,9 @@ fun ScheduleFormSheet(
 
     val selectedModinAccount = remember(selectedModinId, staffAccounts) {
         staffAccounts.firstOrNull { it.id == selectedModinId }
+    }
+    val selectedPenghuluAccount = remember(selectedPenghuluId, staffAccounts) {
+        staffAccounts.firstOrNull { it.id == selectedPenghuluId }
     }
 
     ModalBottomSheet(
@@ -481,14 +520,103 @@ fun ScheduleFormSheet(
                     .testTag("form_location_address")
             )
 
-            OutlinedTextField(
-                value = penghuluName,
-                onValueChange = { penghuluName = it.take(100) },
-                label = { Text("Nama Penghulu KUA") },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            )
+            // Penghulu KUA Picker (links directly to Penghulu Dashboard & Calendar Sync)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    val penghuluDisplay = when {
+                        useManualPenghulu -> "Tulis Nama Penghulu Manual"
+                        selectedPenghuluAccount != null ->
+                            "${selectedPenghuluAccount.officerName} (@${selectedPenghuluAccount.username})"
+                        else -> "Belum Ditentukan (Pilih Penghulu)"
+                    }
+                    OutlinedTextField(
+                        value = penghuluDisplay,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Penghulu KUA Bertugas") },
+                        trailingIcon = {
+                            Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("form_penghulu_picker")
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable { penghuluDropdownExpanded = true }
+                    )
+                    DropdownMenu(
+                        expanded = penghuluDropdownExpanded,
+                        onDismissRequest = { penghuluDropdownExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Belum Ditentukan") },
+                            onClick = {
+                                selectedPenghuluId = ""
+                                useManualPenghulu = false
+                                manualPenghuluName = ""
+                                penghuluDropdownExpanded = false
+                            }
+                        )
+                        activePenghulus.forEach { penghulu ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(penghulu.officerName, fontWeight = FontWeight.SemiBold)
+                                        Text(
+                                            text = "@${penghulu.username}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    selectedPenghuluId = penghulu.id
+                                    useManualPenghulu = false
+                                    manualPenghuluName = ""
+                                    penghuluDropdownExpanded = false
+                                }
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = "Tulis Nama Penghulu Manual...",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            onClick = {
+                                selectedPenghuluId = ""
+                                useManualPenghulu = true
+                                penghuluDropdownExpanded = false
+                            }
+                        )
+                    }
+                }
+
+                if (useManualPenghulu) {
+                    OutlinedTextField(
+                        value = manualPenghuluName,
+                        onValueChange = { manualPenghuluName = it.take(100) },
+                        label = { Text("Nama Penghulu KUA (Manual)") },
+                        placeholder = { Text("Contoh: H. Ahmad Subhan, S.Ag.") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("form_penghulu_manual_input")
+                    )
+                }
+
+                Text(
+                    text = "${activePenghulus.size} akun Penghulu aktif terdaftar. Pilih akun Penghulu agar jadwal tampil otomatis di Dasbor Penghulu.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             // Validation Status selector
             Box(modifier = Modifier.fillMaxWidth()) {
@@ -596,6 +724,12 @@ fun ScheduleFormSheet(
                         } else {
                             selectedModinAccount?.officerName.orEmpty()
                         }
+                        val resolvedPenghuluId = if (useManualPenghulu) "" else selectedPenghuluAccount?.id.orEmpty()
+                        val resolvedPenghuluName = if (useManualPenghulu) {
+                            manualPenghuluName.trim()
+                        } else {
+                            selectedPenghuluAccount?.officerName.orEmpty()
+                        }
                         when {
                             village == null -> validationError = "Pilih wilayah desa terlebih dahulu."
                             resolvedModinName.length < 2 -> validationError = "Pilih atau isi nama Modin pendamping terlebih dahulu."
@@ -621,7 +755,8 @@ fun ScheduleFormSheet(
                                         weddingTime = weddingTime,
                                         locationType = locationType,
                                         locationAddress = locationAddress.trim(),
-                                        penghuluName = penghuluName.trim(),
+                                        penghuluAccountId = resolvedPenghuluId,
+                                        penghuluName = resolvedPenghuluName,
                                         validationStatus = validationStatus,
                                         documentsComplete = documentsComplete,
                                         verificationNote = verificationNote.trim()

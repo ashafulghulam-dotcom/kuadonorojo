@@ -188,7 +188,7 @@ fun StaffLoginScreen(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "Portal Layanan Jadwal Nikah & Modin Desa",
+                text = "Portal Layanan Jadwal Nikah, Penghulu & Modin Desa",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -233,7 +233,7 @@ fun StaffLoginScreen(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Gunakan username dan password resmi Admin KUA atau Modin Desa.",
+                                text = "Gunakan username dan password resmi Admin KUA, Penghulu, atau Modin Desa.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

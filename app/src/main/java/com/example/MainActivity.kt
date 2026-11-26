@@ -35,6 +35,7 @@ import com.example.data.KuaRepository
 import com.example.data.UserRole
 import com.example.ui.screens.AdminDashboardScreen
 import com.example.ui.screens.ModinDashboardScreen
+import com.example.ui.screens.PenghuluDashboardScreen
 import com.example.ui.screens.StaffLoginScreen
 import com.example.ui.theme.KuaDonorojoTheme
 import com.example.util.SmartReminderManager
@@ -75,6 +76,7 @@ fun KuaAppRoot() {
     val loginError by viewModel.loginError.collectAsStateWithLifecycle()
     val dashboardMode by viewModel.dashboardMode.collectAsStateWithLifecycle()
     val previewVillageId by viewModel.previewVillageId.collectAsStateWithLifecycle()
+    val previewPenghuluId by viewModel.previewPenghuluId.collectAsStateWithLifecycle()
     val villagesState by viewModel.villagesState.collectAsStateWithLifecycle()
     val schedulesState by viewModel.schedulesState.collectAsStateWithLifecycle()
     val staffAccountsState by viewModel.staffAccountsState.collectAsStateWithLifecycle()
@@ -93,40 +95,60 @@ fun KuaAppRoot() {
             )
         } else {
             val isStaffAdmin = staffAccount.resolvedRole() == UserRole.ADMIN
-            if (isStaffAdmin && dashboardMode == DashboardMode.ADMIN_KUA) {
-                AdminDashboardScreen(
-                    activeAccount = staffAccount,
-                    villagesState = villagesState,
-                    schedulesState = schedulesState,
-                    staffAccountsState = staffAccountsState,
-                    reminderSettingsState = reminderSettingsState,
-                    isSaving = isSaving,
-                    actionMessage = actionMessage,
-                    onClearMessage = viewModel::clearMessage,
-                    onPostMessage = viewModel::postMessage,
-                    onSwitchMode = viewModel::switchDashboardMode,
-                    onLogoutStaff = viewModel::logoutStaffSession,
-                    onSaveSchedule = viewModel::saveSchedule,
-                    onUpdateVerification = viewModel::updateVerification,
-                    onDeleteSchedule = viewModel::deleteSchedule,
-                    onCreateModinAccount = viewModel::createModinAccount,
-                    onUpdateStaffAccount = viewModel::updateStaffAccount,
-                    onDeleteStaffAccount = viewModel::deleteStaffAccount,
-                    onSaveReminderSettings = viewModel::saveReminderSettings,
-                    onSaveHeadOfKuaSettings = viewModel::saveHeadOfKuaSettings
-                )
-            } else {
-                ModinDashboardScreen(
-                    activeAccount = staffAccount,
-                    isAdminPreview = isStaffAdmin,
-                    villagesState = villagesState,
-                    schedulesState = schedulesState,
-                    reminderSettingsState = reminderSettingsState,
-                    previewVillageId = previewVillageId,
-                    onSelectPreviewVillage = viewModel::selectPreviewVillage,
-                    onSwitchMode = viewModel::switchDashboardMode,
-                    onLogoutStaff = viewModel::logoutStaffSession
-                )
+            val isStaffPenghulu = staffAccount.resolvedRole() == UserRole.PENGHULU
+            when {
+                isStaffAdmin && dashboardMode == DashboardMode.ADMIN_KUA -> {
+                    AdminDashboardScreen(
+                        activeAccount = staffAccount,
+                        villagesState = villagesState,
+                        schedulesState = schedulesState,
+                        staffAccountsState = staffAccountsState,
+                        reminderSettingsState = reminderSettingsState,
+                        isSaving = isSaving,
+                        actionMessage = actionMessage,
+                        onClearMessage = viewModel::clearMessage,
+                        onPostMessage = viewModel::postMessage,
+                        onSwitchMode = viewModel::switchDashboardMode,
+                        onLogoutStaff = viewModel::logoutStaffSession,
+                        onSaveSchedule = viewModel::saveSchedule,
+                        onUpdateVerification = viewModel::updateVerification,
+                        onDeleteSchedule = viewModel::deleteSchedule,
+                        onCreateModinAccount = viewModel::createModinAccount,
+                        onCreatePenghuluAccount = viewModel::createPenghuluAccount,
+                        onUpdateStaffAccount = viewModel::updateStaffAccount,
+                        onDeleteStaffAccount = viewModel::deleteStaffAccount,
+                        onSaveReminderSettings = viewModel::saveReminderSettings,
+                        onSaveHeadOfKuaSettings = viewModel::saveHeadOfKuaSettings
+                    )
+                }
+
+                isStaffPenghulu || (isStaffAdmin && dashboardMode == DashboardMode.PENGHULU) -> {
+                    PenghuluDashboardScreen(
+                        activeAccount = staffAccount,
+                        isAdminPreview = isStaffAdmin,
+                        staffAccountsState = staffAccountsState,
+                        schedulesState = schedulesState,
+                        reminderSettingsState = reminderSettingsState,
+                        previewPenghuluId = previewPenghuluId,
+                        onSelectPreviewPenghulu = viewModel::selectPreviewPenghulu,
+                        onSwitchMode = viewModel::switchDashboardMode,
+                        onLogoutStaff = viewModel::logoutStaffSession
+                    )
+                }
+
+                else -> {
+                    ModinDashboardScreen(
+                        activeAccount = staffAccount,
+                        isAdminPreview = isStaffAdmin,
+                        villagesState = villagesState,
+                        schedulesState = schedulesState,
+                        reminderSettingsState = reminderSettingsState,
+                        previewVillageId = previewVillageId,
+                        onSelectPreviewVillage = viewModel::selectPreviewVillage,
+                        onSwitchMode = viewModel::switchDashboardMode,
+                        onLogoutStaff = viewModel::logoutStaffSession
+                    )
+                }
             }
         }
 

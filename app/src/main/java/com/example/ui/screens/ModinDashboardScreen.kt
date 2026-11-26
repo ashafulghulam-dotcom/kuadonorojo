@@ -53,6 +53,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +68,7 @@ import com.example.data.UiState
 import com.example.data.ValidationStatus
 import com.example.data.Village
 import com.example.data.todayIsoDate
+import com.example.ui.components.DeviceCalendarSyncCard
 import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.ErrorStateCard
 import com.example.ui.components.KpiSummaryStrip
@@ -75,7 +77,9 @@ import com.example.ui.components.ScheduleCard
 import com.example.ui.components.ScheduleDetailSheet
 import com.example.ui.components.SearchAndStatusFilterBar
 import com.example.ui.components.TodayWeddingsSpotlightSection
+import com.example.util.DeviceCalendarSyncManager
 import com.example.util.SmartReminderManager
+import kotlinx.coroutines.launch
 
 private enum class ModinTab(val label: String) {
     SCHEDULES("Jadwal Desa"),
@@ -95,6 +99,7 @@ fun ModinDashboardScreen(
     onLogoutStaff: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
     var selectedTab by remember { mutableStateOf(ModinTab.SCHEDULES) }
@@ -294,6 +299,17 @@ fun ModinDashboardScreen(
                         KuaCalculatorsSection()
                     }
                 } else {
+                    item(key = "modin_calendar_sync") {
+                        DeviceCalendarSyncCard(
+                            accountId = if (isAdminPreview) "preview_modin_$targetVillageCode" else activeAccount.id,
+                            roleLabel = "Modin Desa",
+                            schedulesToSync = if (isAdminPreview) villageScopedSchedules else myAssignedSchedules,
+                            onFeedback = { message ->
+                                scope.launch { snackbarHostState.showSnackbar(message) }
+                            }
+                        )
+                    }
+
                     // Notification permission prompt or active indicator
                     item(key = "modin_notif_banner") {
                         if (!hasNotifPermission) {
@@ -518,12 +534,25 @@ fun ModinDashboardScreen(
         }
     }
 
-    // Strictly read-only detail sheet for Modin
+    // Strictly read-only detail sheet for Modin with direct calendar export
     detailSchedule?.let { schedule ->
         ScheduleDetailSheet(
             schedule = schedule,
             isAdminMode = false,
-            onDismiss = { detailSchedule = null }
+            readOnlyRoleLabel = "Modin",
+            onDismiss = { detailSchedule = null },
+            onAddToCalendar = {
+                val opened = DeviceCalendarSyncManager.openSingleScheduleInCalendarIntent(
+                    context = context,
+                    schedule = schedule,
+                    roleLabel = "Modin Desa"
+                )
+                if (!opened) {
+                    scope.launch {
+                        snackbarHostState.showSnackbar("Aplikasi Kalender HP tidak ditemukan di perangkat ini.")
+                    }
+                }
+            }
         )
     }
 }

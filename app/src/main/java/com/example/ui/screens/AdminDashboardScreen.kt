@@ -65,6 +65,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -143,6 +144,14 @@ fun AdminDashboardScreen(
         active: Boolean,
         onSuccess: () -> Unit
     ) -> Unit,
+    onCreatePenghuluAccount: (
+        username: String,
+        password: String,
+        officerName: String,
+        whatsappNumber: String,
+        active: Boolean,
+        onSuccess: () -> Unit
+    ) -> Unit,
     onUpdateStaffAccount: (
         account: StaffAccount,
         newUsername: String,
@@ -162,6 +171,7 @@ fun AdminDashboardScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectedStatusFilter by remember { mutableStateOf<ValidationStatus?>(null) }
     var selectedVillageFilter by remember { mutableStateOf<String?>(null) }
+    var selectedAccountRoleFilter by remember { mutableStateOf<UserRole?>(null) }
     var selectedAccountVillageFilter by remember { mutableStateOf<String?>(null) }
 
     var detailSchedule by remember { mutableStateOf<MarriageSchedule?>(null) }
@@ -170,6 +180,7 @@ fun AdminDashboardScreen(
     var showScheduleForm by remember { mutableStateOf(false) }
     var deletingSchedule by remember { mutableStateOf<MarriageSchedule?>(null) }
     var showAddModinDialog by remember { mutableStateOf(false) }
+    var showAddPenghuluDialog by remember { mutableStateOf(false) }
     var editingAccount by remember { mutableStateOf<StaffAccount?>(null) }
     var deletingAccount by remember { mutableStateOf<StaffAccount?>(null) }
     var showMonthlyReportSheet by remember { mutableStateOf(false) }
@@ -262,13 +273,13 @@ fun AdminDashboardScreen(
         }
     }
 
-    val filteredStaffAccounts = remember(staffAccounts, selectedAccountVillageFilter) {
-        if (selectedAccountVillageFilter == null) {
-            staffAccounts
-        } else {
-            staffAccounts.filter {
-                it.resolvedRole() == UserRole.MODIN && it.villageId == selectedAccountVillageFilter
-            }
+    val filteredStaffAccounts = remember(staffAccounts, selectedAccountRoleFilter, selectedAccountVillageFilter) {
+        staffAccounts.filter { account ->
+            val role = account.resolvedRole()
+            val matchesRole = selectedAccountRoleFilter == null || role == selectedAccountRoleFilter
+            val matchesVillage = selectedAccountVillageFilter == null ||
+                (role == UserRole.MODIN && account.villageId == selectedAccountVillageFilter)
+            matchesRole && matchesVillage
         }
     }
 
@@ -391,13 +402,20 @@ fun AdminDashboardScreen(
                 }
 
                 AdminTab.ACCOUNTS -> {
+                    val isPenghuluFilter = selectedAccountRoleFilter == UserRole.PENGHULU
                     ExtendedFloatingActionButton(
-                        onClick = { showAddModinDialog = true },
+                        onClick = {
+                            if (isPenghuluFilter) {
+                                showAddPenghuluDialog = true
+                            } else {
+                                showAddModinDialog = true
+                            }
+                        },
                         icon = { Icon(Icons.Filled.PersonAdd, contentDescription = null) },
-                        text = { Text("Tambah Modin") },
+                        text = { Text(if (isPenghuluFilter) "Tambah Penghulu" else "Tambah Modin") },
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.testTag("fab_add_modin")
+                        modifier = Modifier.testTag(if (isPenghuluFilter) "fab_add_penghulu" else "fab_add_modin")
                     )
                 }
 
@@ -633,7 +651,12 @@ fun AdminDashboardScreen(
                                             schedule = schedule,
                                             isAdminMode = true,
                                             onClick = { detailSchedule = schedule },
-                                            onQuickVerify = { verifyingSchedule = schedule }
+                                            onQuickVerify = { verifyingSchedule = schedule },
+                                            onEdit = {
+                                                editingSchedule = schedule
+                                                showScheduleForm = true
+                                            },
+                                            onDelete = { deletingSchedule = schedule }
                                         )
                                     }
                                 }
@@ -771,6 +794,7 @@ fun AdminDashboardScreen(
                         }
 
                         item(key = "accounts_intro") {
+                            val totalPenghuluCount = staffAccounts.count { it.resolvedRole() == UserRole.PENGHULU }
                             val totalModinCount = staffAccounts.count { it.resolvedRole() == UserRole.MODIN }
                             Surface(
                                 shape = RoundedCornerShape(18.dp),
@@ -780,39 +804,125 @@ fun AdminDashboardScreen(
                             ) {
                                 Column(
                                     modifier = Modifier.padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     Text(
-                                        text = "Pengaturan Akun Admin & Modin Desa",
+                                        text = "Pengaturan Akun Admin, Penghulu & Modin",
                                         style = MaterialTheme.typography.titleMedium,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        text = "Setiap desa di KUA Donorojo dapat memiliki lebih dari satu Modin ($totalModinCount akun Modin terdaftar). Tambahkan atau atur username, password, dan nomor WA masing-masing Modin di sini.",
+                                        text = "Kelola akun login dan nomor WA petugas KUA Donorojo ($totalPenghuluCount Penghulu & $totalModinCount Modin terdaftar). Penghulu dan Modin dapat menautkan jadwal tugasnya langsung ke Kalender HP.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    Button(
-                                        onClick = { showAddModinDialog = true },
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(46.dp)
-                                            .testTag("btn_add_modin_header")
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.PersonAdd,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Tambah Username & Password Modin Baru")
+                                        Button(
+                                            onClick = { showAddPenghuluDialog = true },
+                                            shape = RoundedCornerShape(12.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(46.dp)
+                                                .testTag("btn_add_penghulu_header")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.PersonAdd,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Tambah Penghulu",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        OutlinedButton(
+                                            onClick = { showAddModinDialog = true },
+                                            shape = RoundedCornerShape(12.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(46.dp)
+                                                .testTag("btn_add_modin_header")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.PersonAdd,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Tambah Modin",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
 
-                        if (villages.isNotEmpty()) {
+                        item(key = "accounts_role_filter") {
+                            val totalPenghulu = staffAccounts.count { it.resolvedRole() == UserRole.PENGHULU }
+                            val totalModin = staffAccounts.count { it.resolvedRole() == UserRole.MODIN }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilterChip(
+                                    selected = selectedAccountRoleFilter == null && selectedAccountVillageFilter == null,
+                                    onClick = {
+                                        selectedAccountRoleFilter = null
+                                        selectedAccountVillageFilter = null
+                                    },
+                                    label = { Text("Semua (${staffAccounts.size})") },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    ),
+                                    modifier = Modifier.testTag("filter_role_all")
+                                )
+                                FilterChip(
+                                    selected = selectedAccountRoleFilter == UserRole.PENGHULU,
+                                    onClick = {
+                                        selectedAccountRoleFilter =
+                                            if (selectedAccountRoleFilter == UserRole.PENGHULU) null else UserRole.PENGHULU
+                                        selectedAccountVillageFilter = null
+                                    },
+                                    label = { Text("Penghulu ($totalPenghulu)") },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    ),
+                                    modifier = Modifier.testTag("filter_role_penghulu")
+                                )
+                                FilterChip(
+                                    selected = selectedAccountRoleFilter == UserRole.MODIN && selectedAccountVillageFilter == null,
+                                    onClick = {
+                                        selectedAccountRoleFilter =
+                                            if (selectedAccountRoleFilter == UserRole.MODIN) null else UserRole.MODIN
+                                        selectedAccountVillageFilter = null
+                                    },
+                                    label = { Text("Modin Desa ($totalModin)") },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    ),
+                                    modifier = Modifier.testTag("filter_role_modin")
+                                )
+                            }
+                        }
+
+                        if (villages.isNotEmpty() && selectedAccountRoleFilter != UserRole.PENGHULU) {
                             item(key = "accounts_village_filter") {
                                 Row(
                                     modifier = Modifier
@@ -820,15 +930,6 @@ fun AdminDashboardScreen(
                                         .horizontalScroll(rememberScrollState()),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    FilterChip(
-                                        selected = selectedAccountVillageFilter == null,
-                                        onClick = { selectedAccountVillageFilter = null },
-                                        label = { Text("Semua (${staffAccounts.size})") },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                    )
                                     villages.forEach { village ->
                                         val countInVillage = staffAccounts.count {
                                             it.resolvedRole() == UserRole.MODIN && it.villageId == village.code
@@ -836,13 +937,17 @@ fun AdminDashboardScreen(
                                         FilterChip(
                                             selected = selectedAccountVillageFilter == village.code,
                                             onClick = {
-                                                selectedAccountVillageFilter =
-                                                    if (selectedAccountVillageFilter == village.code) null else village.code
+                                                if (selectedAccountVillageFilter == village.code) {
+                                                    selectedAccountVillageFilter = null
+                                                } else {
+                                                    selectedAccountRoleFilter = UserRole.MODIN
+                                                    selectedAccountVillageFilter = village.code
+                                                }
                                             },
                                             label = { Text("${village.name.removePrefix("Desa ")} ($countInVillage)") },
                                             colors = FilterChipDefaults.filterChipColors(
-                                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                                selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                                selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
                                             )
                                         )
                                     }
@@ -873,20 +978,35 @@ fun AdminDashboardScreen(
                             is UiState.Success -> {
                                 if (filteredStaffAccounts.isEmpty()) {
                                     item(key = "empty_accounts") {
+                                        val isPenghuluFilter = selectedAccountRoleFilter == UserRole.PENGHULU
                                         EmptyStateCard(
                                             icon = Icons.Filled.Groups,
-                                            title = "Belum Ada Modin di Desa Ini",
-                                            description = "Tekan tombol Tambah Modin untuk membuat username dan password Modin baru untuk desa ini.",
-                                            actionLabel = "Tambah Modin Baru",
-                                            onAction = { showAddModinDialog = true }
+                                            title = if (isPenghuluFilter) "Belum Ada Akun Penghulu" else "Belum Ada Modin di Desa Ini",
+                                            description = if (isPenghuluFilter) {
+                                                "Tekan tombol Tambah Penghulu untuk membuat username dan password Penghulu KUA Donorojo."
+                                            } else {
+                                                "Tekan tombol Tambah Modin untuk membuat username dan password Modin baru untuk desa ini."
+                                            },
+                                            actionLabel = if (isPenghuluFilter) "Tambah Penghulu Baru" else "Tambah Modin Baru",
+                                            onAction = {
+                                                if (isPenghuluFilter) {
+                                                    showAddPenghuluDialog = true
+                                                } else {
+                                                    showAddModinDialog = true
+                                                }
+                                            }
                                         )
                                     }
                                 } else {
                                     items(filteredStaffAccounts, key = { it.id }) { account ->
-                                        val scheduleCount = if (account.resolvedRole() == UserRole.ADMIN) {
-                                            schedules.size
-                                        } else {
-                                            schedules.count {
+                                        val scheduleCount = when (account.resolvedRole()) {
+                                            UserRole.ADMIN -> schedules.size
+                                            UserRole.PENGHULU -> schedules.count {
+                                                it.penghuluAccountId == account.id ||
+                                                    (it.penghuluAccountId.isBlank() &&
+                                                        it.penghuluName.equals(account.officerName, ignoreCase = true))
+                                            }
+                                            UserRole.MODIN -> schedules.count {
                                                 it.modinAccountId == account.id ||
                                                     (it.modinAccountId.isBlank() && it.villageId == account.villageId)
                                             }
@@ -895,7 +1015,7 @@ fun AdminDashboardScreen(
                                             account = account,
                                             scheduleCount = scheduleCount,
                                             onEdit = { editingAccount = account },
-                                            onDelete = if (account.resolvedRole() == UserRole.MODIN) {
+                                            onDelete = if (account.resolvedRole() != UserRole.ADMIN) {
                                                 { deletingAccount = account }
                                             } else {
                                                 null
@@ -1017,6 +1137,25 @@ fun AdminDashboardScreen(
         )
     }
 
+    if (showAddPenghuluDialog) {
+        AddPenghuluAccountDialog(
+            existingAccounts = staffAccounts,
+            isSaving = isSaving,
+            onDismiss = { showAddPenghuluDialog = false },
+            onCreate = { username, password, officerName, whatsappNumber, active ->
+                onCreatePenghuluAccount(
+                    username,
+                    password,
+                    officerName,
+                    whatsappNumber,
+                    active
+                ) {
+                    showAddPenghuluDialog = false
+                }
+            }
+        )
+    }
+
     editingAccount?.let { account ->
         StaffAccountDialog(
             account = account,
@@ -1040,11 +1179,14 @@ fun AdminDashboardScreen(
     }
 
     deletingAccount?.let { account ->
+        val isPenghulu = account.resolvedRole() == UserRole.PENGHULU
+        val roleTitle = if (isPenghulu) "Penghulu" else "Modin"
+        val scopeDesc = if (isPenghulu) "KUA Donorojo" else account.villageName
         AlertDialog(
             onDismissRequest = { deletingAccount = null },
-            title = { Text("Hapus Akun Modin?") },
+            title = { Text("Hapus Akun $roleTitle?") },
             text = {
-                Text("Akun Modin \"${account.officerName}\" (@${account.username} • ${account.villageName}) akan dihapus. Jadwal nikah yang sudah ada tidak akan terhapus.")
+                Text("Akun $roleTitle \"${account.officerName}\" (@${account.username} • $scopeDesc) akan dihapus. Jadwal nikah yang sudah ada tidak akan terhapus.")
             },
             confirmButton = {
                 Button(
@@ -1094,7 +1236,9 @@ private fun StaffAccountAdminCard(
     onEdit: () -> Unit,
     onDelete: (() -> Unit)? = null
 ) {
-    val isAdmin = account.resolvedRole() == UserRole.ADMIN
+    val role = account.resolvedRole()
+    val isAdmin = role == UserRole.ADMIN
+    val isPenghulu = role == UserRole.PENGHULU
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -1103,11 +1247,11 @@ private fun StaffAccountAdminCard(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(
-            width = if (isAdmin) 1.5.dp else 1.dp,
-            color = if (isAdmin) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
-            } else {
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
+            width = if (isAdmin || isPenghulu) 1.5.dp else 1.dp,
+            color = when {
+                isAdmin -> MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+                isPenghulu -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.5f)
+                else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
             }
         )
     ) {
@@ -1123,9 +1267,13 @@ private fun StaffAccountAdminCard(
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(
-                        imageVector = if (isAdmin) Icons.Filled.AdminPanelSettings else Icons.Filled.Person,
+                        imageVector = when {
+                            isAdmin -> Icons.Filled.AdminPanelSettings
+                            isPenghulu -> Icons.Filled.Badge
+                            else -> Icons.Filled.Person
+                        },
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = if (isPenghulu) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(22.dp)
                     )
                     Column {
@@ -1135,10 +1283,10 @@ private fun StaffAccountAdminCard(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = if (isAdmin) {
-                                "Akses Penuh • $scheduleCount total jadwal"
-                            } else {
-                                "${account.villageName} • $scheduleCount jadwal"
+                            text = when {
+                                isAdmin -> "Akses Penuh • $scheduleCount total jadwal"
+                                isPenghulu -> "Penghulu KUA Donorojo • $scheduleCount jadwal tugas"
+                                else -> "${account.villageName} • $scheduleCount jadwal"
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant

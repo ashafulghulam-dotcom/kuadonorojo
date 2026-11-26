@@ -55,6 +55,7 @@ data class MarriageScheduleEntity(
     val weddingTime: String,
     val locationType: String,
     val locationAddress: String,
+    val penghuluAccountId: String = "",
     val penghuluName: String,
     val validationStatus: String,
     val documentsComplete: Boolean,
@@ -109,6 +110,9 @@ interface KuaDao {
 
     @Query("SELECT COUNT(*) FROM staff_accounts")
     suspend fun countStaffAccounts(): Int
+
+    @Query("SELECT COUNT(*) FROM staff_accounts WHERE role = :role")
+    suspend fun countStaffByRole(role: String): Int
 
     @Query("SELECT * FROM staff_accounts WHERE LOWER(username) = LOWER(:username) LIMIT 1")
     suspend fun getStaffAccountByUsername(username: String): StaffAccountEntity?
@@ -167,7 +171,7 @@ interface KuaDao {
         MarriageScheduleEntity::class,
         ReminderSettingsEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class KuaLocalDatabase : RoomDatabase() {
@@ -198,6 +202,14 @@ abstract class KuaLocalDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE marriage_schedules ADD COLUMN penghuluAccountId TEXT NOT NULL DEFAULT ''"
+                )
+            }
+        }
+
         fun getInstance(context: Context): KuaLocalDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -205,7 +217,7 @@ abstract class KuaLocalDatabase : RoomDatabase() {
                     KuaLocalDatabase::class.java,
                     "kua_donorojo_local.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { INSTANCE = it }
             }

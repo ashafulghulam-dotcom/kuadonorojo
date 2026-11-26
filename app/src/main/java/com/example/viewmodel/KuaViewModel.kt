@@ -40,6 +40,9 @@ class KuaViewModel(
     private val _previewVillageId = MutableStateFlow<String?>(null)
     val previewVillageId: StateFlow<String?> = _previewVillageId.asStateFlow()
 
+    private val _previewPenghuluId = MutableStateFlow<String?>(null)
+    val previewPenghuluId: StateFlow<String?> = _previewPenghuluId.asStateFlow()
+
     private val _actionMessage = MutableStateFlow<String?>(null)
     val actionMessage: StateFlow<String?> = _actionMessage.asStateFlow()
 
@@ -142,18 +145,20 @@ class KuaViewModel(
 
         _loginError.value = null
         _activeStaffAccount.value = matched
-        _dashboardMode.value = if (matched.resolvedRole() == UserRole.ADMIN) {
-            DashboardMode.ADMIN_KUA
-        } else {
-            DashboardMode.MODIN_DESA
+        _dashboardMode.value = when (matched.resolvedRole()) {
+            UserRole.ADMIN -> DashboardMode.ADMIN_KUA
+            UserRole.PENGHULU -> DashboardMode.PENGHULU
+            UserRole.MODIN -> DashboardMode.MODIN_DESA
         }
         _previewVillageId.value = matched.villageId.takeIf { it.isNotBlank() }
+        _previewPenghuluId.value = if (matched.resolvedRole() == UserRole.PENGHULU) matched.id else null
     }
 
     fun logoutStaffSession() {
         _activeStaffAccount.value = null
         _loginError.value = null
         _previewVillageId.value = null
+        _previewPenghuluId.value = null
     }
 
     fun clearLoginError() {
@@ -168,6 +173,10 @@ class KuaViewModel(
 
     fun selectPreviewVillage(villageId: String?) {
         _previewVillageId.value = villageId
+    }
+
+    fun selectPreviewPenghulu(penghuluId: String?) {
+        _previewPenghuluId.value = penghuluId
     }
 
     fun clearMessage() {
@@ -205,6 +214,36 @@ class KuaViewModel(
                 },
                 onFailure = { error ->
                     _actionMessage.value = error.message ?: "Gagal menambahkan akun Modin."
+                }
+            )
+        }
+    }
+
+    fun createPenghuluAccount(
+        username: String,
+        password: String,
+        officerName: String,
+        whatsappNumber: String,
+        active: Boolean,
+        onSuccess: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            _isSaving.value = true
+            val result = repository.createPenghuluAccount(
+                username = username,
+                password = password,
+                officerName = officerName,
+                whatsappNumber = whatsappNumber,
+                active = active
+            )
+            _isSaving.value = false
+            result.fold(
+                onSuccess = {
+                    _actionMessage.value = "Akun Penghulu \"$officerName\" berhasil ditambahkan."
+                    onSuccess()
+                },
+                onFailure = { error ->
+                    _actionMessage.value = error.message ?: "Gagal menambahkan akun Penghulu."
                 }
             )
         }
@@ -254,11 +293,12 @@ class KuaViewModel(
             _isSaving.value = false
             result.fold(
                 onSuccess = {
-                    _actionMessage.value = "Akun Modin \"${account.officerName}\" telah dihapus."
+                    val roleTitle = if (account.resolvedRole() == UserRole.PENGHULU) "Penghulu" else "Modin"
+                    _actionMessage.value = "Akun $roleTitle \"${account.officerName}\" telah dihapus."
                     onSuccess()
                 },
                 onFailure = { error ->
-                    _actionMessage.value = error.message ?: "Gagal menghapus akun Modin."
+                    _actionMessage.value = error.message ?: "Gagal menghapus akun petugas."
                 }
             )
         }

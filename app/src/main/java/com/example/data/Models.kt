@@ -10,6 +10,7 @@ const val DEFAULT_ADMIN_PASSWORD = "kua2026"
 
 enum class UserRole(val code: String, val label: String) {
     ADMIN("ADMIN", "Admin KUA Donorojo"),
+    PENGHULU("PENGHULU", "Penghulu KUA"),
     MODIN("MODIN", "Modin Desa");
 
     companion object {
@@ -20,7 +21,8 @@ enum class UserRole(val code: String, val label: String) {
 
 enum class DashboardMode {
     ADMIN_KUA,
-    MODIN_DESA
+    MODIN_DESA,
+    PENGHULU
 }
 
 enum class LocationType(val code: String, val label: String) {
@@ -153,6 +155,7 @@ data class MarriageSchedule(
     val weddingTime: String = "",
     val locationType: String = LocationType.KUA.code,
     val locationAddress: String = "",
+    val penghuluAccountId: String = "",
     val penghuluName: String = "",
     val validationStatus: String = ValidationStatus.MENUNGGU.code,
     val documentsComplete: Boolean = false,
@@ -186,6 +189,7 @@ data class ScheduleDraft(
     val weddingTime: String = "09:00",
     val locationType: LocationType = LocationType.KUA,
     val locationAddress: String = "Balai Nikah KUA Donorojo",
+    val penghuluAccountId: String = "",
     val penghuluName: String = "",
     val validationStatus: ValidationStatus = ValidationStatus.MENUNGGU,
     val documentsComplete: Boolean = false,
@@ -201,8 +205,24 @@ data class OfficialModinPreset(
     val defaultOfficerName: String
 )
 
+data class OfficialPenghuluPreset(
+    val accountId: String,
+    val defaultUsername: String,
+    val defaultPassword: String,
+    val defaultOfficerName: String
+)
+
 object DonorojoOfficialDirectory {
     const val ADMIN_ACCOUNT_ID = "admin_kua"
+
+    val defaultPenghuluPresets: List<OfficialPenghuluPreset> = listOf(
+        OfficialPenghuluPreset(
+            accountId = "penghulu_kua_1",
+            defaultUsername = "penghulu1",
+            defaultPassword = "donorojo09",
+            defaultOfficerName = "Penghulu KUA Donorojo 1"
+        )
+    )
 
     val eightModinPresets: List<OfficialModinPreset> = listOf(
         OfficialModinPreset(

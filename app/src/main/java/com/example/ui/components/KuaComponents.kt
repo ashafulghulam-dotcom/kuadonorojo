@@ -321,12 +321,20 @@ fun KuaHeroHeader(
                                 .testTag("switch_mode_admin")
                         )
                         ModeTogglePill(
-                            label = "Pratinjau Modin",
+                            label = "Modin",
                             selected = currentMode == DashboardMode.MODIN_DESA,
                             onClick = { onSwitchMode(DashboardMode.MODIN_DESA) },
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("switch_mode_modin")
+                        )
+                        ModeTogglePill(
+                            label = "Penghulu",
+                            selected = currentMode == DashboardMode.PENGHULU,
+                            onClick = { onSwitchMode(DashboardMode.PENGHULU) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("switch_mode_penghulu")
                         )
                     }
                 }
@@ -817,6 +825,8 @@ fun ScheduleCard(
     isAdminMode: Boolean,
     onClick: () -> Unit,
     onQuickVerify: (() -> Unit)? = null,
+    onEdit: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val status = schedule.resolvedStatus()
@@ -933,35 +943,94 @@ fun ScheduleCard(
                 }
             }
 
-            if (isAdminMode && onQuickVerify != null) {
+            if (isAdminMode && (onQuickVerify != null || onEdit != null || onDelete != null)) {
                 Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = if (schedule.documentsComplete) "Berkas N1–N4 Lengkap" else "Berkas Belum Lengkap",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (schedule.documentsComplete) StatusVerifiedFg else StatusPendingFg
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = if (schedule.documentsComplete) "Berkas N1–N4 Lengkap" else "Berkas Belum Lengkap",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (schedule.documentsComplete) StatusVerifiedFg else StatusPendingFg
-                    )
-                    OutlinedButton(
-                        onClick = onQuickVerify,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
-                        modifier = Modifier.testTag("quick_verify_btn_${schedule.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Verified,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Verifikasi Akhir",
-                            style = MaterialTheme.typography.labelMedium
-                        )
+                    if (onQuickVerify != null) {
+                        OutlinedButton(
+                            onClick = onQuickVerify,
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                            modifier = Modifier
+                                .weight(1.25f)
+                                .height(42.dp)
+                                .testTag("quick_verify_btn_${schedule.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Verified,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Verifikasi",
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                    if (onEdit != null) {
+                        OutlinedButton(
+                            onClick = onEdit,
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(0.9f)
+                                .height(42.dp)
+                                .testTag("quick_edit_btn_${schedule.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Edit,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Edit",
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                    if (onDelete != null) {
+                        OutlinedButton(
+                            onClick = onDelete,
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .weight(0.95f)
+                                .height(42.dp)
+                                .testTag("quick_delete_btn_${schedule.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.DeleteOutline,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Hapus",
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
             }
@@ -1000,11 +1069,13 @@ fun ScheduleDetailSheet(
     schedule: MarriageSchedule,
     isAdminMode: Boolean,
     onDismiss: () -> Unit,
+    readOnlyRoleLabel: String = "Modin",
     onVerifyClick: (() -> Unit)? = null,
     onEditClick: (() -> Unit)? = null,
     onDeleteClick: (() -> Unit)? = null,
     onSendWhatsApp: (() -> Unit)? = null,
-    onSendPhoneNotif: (() -> Unit)? = null
+    onSendPhoneNotif: (() -> Unit)? = null,
+    onAddToCalendar: (() -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val status = schedule.resolvedStatus()
@@ -1190,6 +1261,21 @@ fun ScheduleDetailSheet(
                     }
                 }
             } else {
+                if (onAddToCalendar != null) {
+                    Button(
+                        onClick = onAddToCalendar,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .testTag("detail_add_to_calendar_button"),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Icon(Icons.Filled.CalendarMonth, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Tambah Jadwal Ini ke Kalender HP")
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
                 Surface(
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
                     shape = RoundedCornerShape(14.dp),
@@ -1207,7 +1293,7 @@ fun ScheduleDetailSheet(
                             modifier = Modifier.size(20.dp)
                         )
                         Text(
-                            text = "Mode Pantau Modin (Hanya Baca). Perubahan data dan verifikasi akhir dilakukan oleh Admin KUA Donorojo.",
+                            text = "Mode Pantau $readOnlyRoleLabel (Hanya Baca). Perubahan data dan verifikasi akhir dilakukan oleh Admin KUA Donorojo.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )

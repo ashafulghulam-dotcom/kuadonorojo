@@ -300,6 +300,190 @@ fun AddModinAccountDialog(
 }
 
 @Composable
+fun AddPenghuluAccountDialog(
+    existingAccounts: List<StaffAccount>,
+    isSaving: Boolean,
+    onDismiss: () -> Unit,
+    onCreate: (
+        username: String,
+        password: String,
+        officerName: String,
+        whatsappNumber: String,
+        active: Boolean
+    ) -> Unit
+) {
+    fun suggestUsername(): String {
+        val countPenghulu = existingAccounts.count { it.resolvedRole() == UserRole.PENGHULU }
+        var suffix = countPenghulu + 1
+        var candidate = "penghulu$suffix"
+        while (existingAccounts.any { it.username.equals(candidate, ignoreCase = true) }) {
+            suffix++
+            candidate = "penghulu$suffix"
+        }
+        return candidate
+    }
+
+    var officerName by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf(suggestUsername()) }
+    var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var whatsappNumber by remember { mutableStateOf("") }
+    var active by remember { mutableStateOf(true) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Tambah Akun Penghulu KUA",
+                style = MaterialTheme.typography.titleLarge
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Tambahkan akun Penghulu KUA Donorojo agar dapat login ke Dasbor Penghulu, melihat jadwal tugas akad, dan menautkannya ke Kalender HP.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedTextField(
+                    value = officerName,
+                    onValueChange = { officerName = it.take(100) },
+                    label = { Text("Nama Lengkap Penghulu *") },
+                    placeholder = { Text("Contoh: H. Muhammad Luthfi, S.Ag.") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("add_penghulu_officer_name")
+                )
+
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it.trim().lowercase().take(50) },
+                    label = { Text("Username Login *") },
+                    placeholder = { Text("Contoh: penghulu2") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("add_penghulu_username")
+                )
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it.take(64) },
+                    label = { Text("Password Login *") },
+                    placeholder = { Text("Minimal 4 karakter") },
+                    singleLine = true,
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                contentDescription = stringResource(R.string.cd_toggle_password)
+                            )
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("add_penghulu_password")
+                )
+
+                OutlinedTextField(
+                    value = whatsappNumber,
+                    onValueChange = { whatsappNumber = it.take(30) },
+                    label = { Text("Nomor WhatsApp (Opsional)") },
+                    placeholder = { Text("08xxxxxxxxxx") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("add_penghulu_whatsapp")
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Status Akun Aktif", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Aktifkan agar Penghulu bisa login dan dipilih saat input jadwal nikah",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = active, onCheckedChange = { active = it })
+                }
+
+                if (errorMsg != null) {
+                    Text(
+                        text = errorMsg!!,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val cleanUser = username.trim().lowercase()
+                    val cleanName = officerName.trim()
+                    val duplicateExists = existingAccounts.any {
+                        it.username.equals(cleanUser, ignoreCase = true)
+                    }
+                    when {
+                        cleanName.length < 2 -> errorMsg = "Nama Penghulu minimal 2 karakter."
+                        cleanUser.length < 3 || !Regex("^[a-z0-9._\\-]+$").matches(cleanUser) ->
+                            errorMsg = "Username minimal 3 karakter (huruf kecil, angka, titik, _ atau -)."
+                        duplicateExists ->
+                            errorMsg = "Username \"$cleanUser\" sudah digunakan petugas lain."
+                        password.length < 4 ->
+                            errorMsg = "Password minimal 4 karakter."
+                        else -> {
+                            errorMsg = null
+                            onCreate(
+                                cleanUser,
+                                password,
+                                cleanName,
+                                whatsappNumber.trim(),
+                                active
+                            )
+                        }
+                    }
+                },
+                enabled = !isSaving,
+                modifier = Modifier.testTag("confirm_add_penghulu_button")
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text("Tambah Penghulu")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSaving) {
+                Text("Batal")
+            }
+        }
+    )
+}
+
+@Composable
 fun StaffAccountDialog(
     account: StaffAccount,
     villages: List<Village>,
@@ -314,7 +498,10 @@ fun StaffAccountDialog(
         newVillage: Village?
     ) -> Unit
 ) {
-    val isAdminRole = account.resolvedRole() == UserRole.ADMIN
+    val role = account.resolvedRole()
+    val isAdminRole = role == UserRole.ADMIN
+    val isModinRole = role == UserRole.MODIN
+    val isPenghuluRole = role == UserRole.PENGHULU
     val initialVillage = remember(account, villages) {
         villages.firstOrNull { it.code == account.villageId }
     }
@@ -333,7 +520,11 @@ fun StaffAccountDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = if (isAdminRole) "Pengaturan Akun Admin KUA" else "Ubah Akun Modin",
+                text = when {
+                    isAdminRole -> "Pengaturan Akun Admin KUA"
+                    isPenghuluRole -> "Ubah Akun Penghulu KUA"
+                    else -> "Ubah Akun Modin"
+                },
                 style = MaterialTheme.typography.titleLarge
             )
         },
@@ -342,7 +533,7 @@ fun StaffAccountDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                if (!isAdminRole && villages.isNotEmpty()) {
+                if (isModinRole && villages.isNotEmpty()) {
                     Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
                             value = selectedVillage?.name ?: account.villageName,
@@ -380,7 +571,15 @@ fun StaffAccountDialog(
                 OutlinedTextField(
                     value = officerName,
                     onValueChange = { officerName = it.take(100) },
-                    label = { Text(if (isAdminRole) "Nama Admin KUA *" else "Nama Modin Desa *") },
+                    label = {
+                        Text(
+                            when {
+                                isAdminRole -> "Nama Admin KUA *"
+                                isPenghuluRole -> "Nama Penghulu KUA *"
+                                else -> "Nama Modin Desa *"
+                            }
+                        )
+                    },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -477,7 +676,7 @@ fun StaffAccountDialog(
                                 cleanName,
                                 whatsappNumber.trim(),
                                 if (isAdminRole) true else active,
-                                if (isAdminRole) null else selectedVillage
+                                if (isModinRole) selectedVillage else null
                             )
                         }
                     }

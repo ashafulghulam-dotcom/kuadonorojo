@@ -74,6 +74,28 @@ class KuaRepository(
             dao.insertStaffAccountsIfMissing(accounts)
         }
 
+        if (dao.countStaffByRole(UserRole.PENGHULU.code) == 0) {
+            val penghuluAccounts = DonorojoOfficialDirectory.defaultPenghuluPresets.map { preset ->
+                val salt = PasswordHasher.generateSalt()
+                val hash = PasswordHasher.hashPassword(preset.defaultPassword, salt)
+                StaffAccountEntity(
+                    id = preset.accountId,
+                    username = preset.defaultUsername,
+                    passwordHash = hash,
+                    passwordSalt = salt,
+                    role = UserRole.PENGHULU.code,
+                    villageId = "",
+                    villageName = "KUA Donorojo",
+                    officerName = preset.defaultOfficerName,
+                    whatsappNumber = "",
+                    active = true,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            }
+            dao.insertStaffAccountsIfMissing(penghuluAccounts)
+        }
+
         if (dao.countReminderSettings() == 0) {
             dao.upsertReminderSettings(
                 ReminderSettingsEntity(
@@ -131,7 +153,13 @@ class KuaRepository(
                     updatedAt = it.updatedAt
                 )
             }.sortedWith(
-                compareBy<StaffAccount> { if (it.resolvedRole() == UserRole.ADMIN) 0 else 1 }
+                compareBy<StaffAccount> {
+                    when (it.resolvedRole()) {
+                        UserRole.ADMIN -> 0
+                        UserRole.PENGHULU -> 1
+                        UserRole.MODIN -> 2
+                    }
+                }
                     .thenBy { it.villageName.lowercase(Locale.ROOT) }
                     .thenBy { it.officerName.lowercase(Locale.ROOT) }
             )
@@ -155,6 +183,7 @@ class KuaRepository(
                     weddingTime = it.weddingTime,
                     locationType = it.locationType,
                     locationAddress = it.locationAddress,
+                    penghuluAccountId = it.penghuluAccountId,
                     penghuluName = it.penghuluName,
                     validationStatus = it.validationStatus,
                     documentsComplete = it.documentsComplete,
@@ -237,6 +266,66 @@ class KuaRepository(
                     role = UserRole.MODIN.code,
                     villageId = village.code,
                     villageName = village.name,
+                    officerName = cleanOfficer,
+                    whatsappNumber = cleanPhone,
+                    active = active,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            )
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun createPenghuluAccount(
+        username: String,
+        password: String,
+        officerName: String,
+        whatsappNumber: String,
+        active: Boolean
+    ): Result<Unit> {
+        val cleanUsername = username.trim().lowercase(Locale.ROOT)
+        val cleanOfficer = officerName.trim()
+        val cleanPhone = whatsappNumber.trim()
+
+        if (cleanUsername.length !in 3..50 || !Regex("^[a-z0-9._\\-]+$").matches(cleanUsername)) {
+            return Result.failure(
+                IllegalArgumentException("Username harus 3–50 karakter (huruf kecil, angka, titik, garis bawah).")
+            )
+        }
+        if (password.length < 4) {
+            return Result.failure(IllegalArgumentException("Password minimal 4 karakter."))
+        }
+        if (cleanOfficer.length !in 2..100) {
+            return Result.failure(IllegalArgumentException("Nama Penghulu harus 2–100 karakter."))
+        }
+        if (cleanPhone.length > 30) {
+            return Result.failure(IllegalArgumentException("Nomor WhatsApp maksimal 30 karakter."))
+        }
+
+        return try {
+            val duplicate = dao.getStaffAccountByUsername(cleanUsername)
+            if (duplicate != null) {
+                return Result.failure(
+                    IllegalArgumentException("Username \"$cleanUsername\" sudah digunakan petugas lain.")
+                )
+            }
+            val now = System.currentTimeMillis()
+            val salt = PasswordHasher.generateSalt()
+            val hash = PasswordHasher.hashPassword(password, salt)
+            val newId = "penghulu_${UUID.randomUUID().toString().take(8)}"
+
+            dao.upsertStaffAccount(
+                StaffAccountEntity(
+                    id = newId,
+                    username = cleanUsername,
+                    passwordHash = hash,
+                    passwordSalt = salt,
+                    role = UserRole.PENGHULU.code,
+                    villageId = "",
+                    villageName = "KUA Donorojo",
                     officerName = cleanOfficer,
                     whatsappNumber = cleanPhone,
                     active = active,
@@ -497,6 +586,7 @@ class KuaRepository(
                     weddingTime = weddingTime,
                     locationType = draft.locationType.code,
                     locationAddress = address,
+                    penghuluAccountId = draft.penghuluAccountId.trim(),
                     penghuluName = penghulu,
                     validationStatus = draft.validationStatus.code,
                     documentsComplete = draft.documentsComplete,
