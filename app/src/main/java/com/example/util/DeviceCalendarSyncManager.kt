@@ -351,6 +351,10 @@ object DeviceCalendarSyncManager {
             if (schedule.penghuluName.isNotBlank()) {
                 appendLine("Penghulu: ${schedule.penghuluName}")
             }
+            val waliSummary = schedule.waliSummaryText()
+            if (waliSummary.isNotBlank()) {
+                appendLine("Wali Nikah: $waliSummary")
+            }
             appendLine("Status KUA: ${schedule.resolvedStatus().label}")
             if (schedule.verificationNote.isNotBlank()) {
                 appendLine("Catatan: ${schedule.verificationNote}")

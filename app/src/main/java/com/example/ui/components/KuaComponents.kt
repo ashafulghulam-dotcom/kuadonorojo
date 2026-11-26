@@ -913,6 +913,15 @@ fun ScheduleCard(
                 )
             }
 
+            val waliSummary = schedule.waliSummaryText()
+            if (waliSummary.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                InfoChipInline(
+                    icon = Icons.Filled.Person,
+                    text = waliSummary
+                )
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
             ValidationProgressTimeline(status = status)
 
@@ -1133,6 +1142,38 @@ fun ScheduleDetailSheet(
             DetailRow("Jenis Lokasi", schedule.resolvedLocationType().label)
             DetailRow("Alamat Akad", schedule.locationAddress)
             DetailRow("Penghulu", schedule.penghuluName.ifBlank { "Belum ditentukan" })
+            val waliType = schedule.resolvedWaliStatus()
+            DetailRow("Status Wali Nikah", waliType.label)
+            if (waliType == com.example.data.WaliStatus.WALI_NASAB) {
+                if (schedule.waliRelationship.isNotBlank()) {
+                    DetailRow("Hubungan Wali", schedule.waliRelationship)
+                }
+                if (schedule.waliName.isNotBlank()) {
+                    val waliFullName = if (schedule.waliBin.isNotBlank()) {
+                        "${schedule.waliName} bin ${schedule.waliBin}"
+                    } else {
+                        schedule.waliName
+                    }
+                    DetailRow("Nama Wali Nasab", waliFullName)
+                }
+                if (schedule.waliNik.isNotBlank()) {
+                    DetailRow("NIK Wali", schedule.waliNik)
+                }
+                if (schedule.waliAddress.isNotBlank()) {
+                    DetailRow("Alamat Wali", schedule.waliAddress)
+                }
+            } else {
+                DetailRow(
+                    "Penghulu Wali Hakim",
+                    schedule.waliName.ifBlank { "Belum ditentukan" }
+                )
+                if (schedule.waliHakimReason.isNotBlank()) {
+                    DetailRow("Sebab Wali Hakim", schedule.waliHakimReason)
+                }
+                if (schedule.waliAddress.isNotBlank()) {
+                    DetailRow("No. Penetapan / Ket.", schedule.waliAddress)
+                }
+            }
             if (schedule.groomNik.isNotBlank()) {
                 DetailRow("NIK Calon Suami", schedule.groomNik)
             }

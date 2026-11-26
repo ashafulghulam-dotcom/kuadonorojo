@@ -118,7 +118,8 @@ fun KuaAppRoot() {
                         onUpdateStaffAccount = viewModel::updateStaffAccount,
                         onDeleteStaffAccount = viewModel::deleteStaffAccount,
                         onSaveReminderSettings = viewModel::saveReminderSettings,
-                        onSaveHeadOfKuaSettings = viewModel::saveHeadOfKuaSettings
+                        onSaveHeadOfKuaSettings = viewModel::saveHeadOfKuaSettings,
+                        onSaveWaliHakimSettings = viewModel::saveWaliHakimSettings
                     )
                 }
 

@@ -153,6 +153,7 @@ fun PenghuluDashboardScreen(
         } else {
             allSchedules.filter { item ->
                 item.penghuluAccountId == targetPenghulu.id ||
+                    item.waliHakimAccountId == targetPenghulu.id ||
                     (item.penghuluAccountId.isBlank() &&
                         item.penghuluName.isNotBlank() &&
                         item.penghuluName.equals(targetPenghulu.officerName, ignoreCase = true))

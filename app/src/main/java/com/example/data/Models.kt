@@ -35,6 +35,40 @@ enum class LocationType(val code: String, val label: String) {
     }
 }
 
+enum class WaliStatus(val code: String, val label: String) {
+    WALI_NASAB("WALI_NASAB", "Wali Nasab"),
+    WALI_HAKIM("WALI_HAKIM", "Wali Hakim");
+
+    companion object {
+        fun fromCode(raw: String?): WaliStatus =
+            entries.firstOrNull { it.code.equals(raw, ignoreCase = true) } ?: WALI_NASAB
+    }
+}
+
+object WaliReferenceData {
+    val nasabRelationships: List<String> = listOf(
+        "Ayah Kandung",
+        "Kakek dari Ayah (Ayah dari Ayah)",
+        "Saudara Laki-laki Sekandung",
+        "Saudara Laki-laki Seayah",
+        "Anak Laki-laki dari Saudara Laki-laki Sekandung",
+        "Anak Laki-laki dari Saudara Laki-laki Seayah",
+        "Paman Sekandung (Saudara Ayah Sekandung)",
+        "Paman Seayah (Saudara Ayah Seayah)",
+        "Anak Laki-laki dari Paman Sekandung",
+        "Anak Laki-laki dari Paman Seayah"
+    )
+
+    val waliHakimReasons: List<String> = listOf(
+        "Tidak mempunyai wali nasab",
+        "Wali nasab tidak diketahui keberadaannya (Mafqud)",
+        "Wali nasab berada di tempat jauh / tidak dapat dihadirkan",
+        "Wali nasab enggan / menolak (Wali Adhal - Penetapan PA)",
+        "Wali nasab tidak memenuhi syarat (non-muslim / belum baligh / hilang akal / ihram)",
+        "Wali nasab sedang menjalani hukuman / tidak cakap hukum"
+    )
+}
+
 enum class ValidationStatus(
     val code: String,
     val label: String,
@@ -102,6 +136,7 @@ data class StaffAccount(
     val officerName: String = "",
     val whatsappNumber: String = "",
     val active: Boolean = true,
+    val isWaliHakim: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {
@@ -120,6 +155,8 @@ data class ReminderSettings(
     val headOfKuaTitle: String = DEFAULT_HEAD_OF_KUA_TITLE,
     val headOfKuaName: String = "",
     val headOfKuaNip: String = "",
+    val defaultWaliHakimAccountId: String = "",
+    val defaultWaliHakimName: String = "",
     val updatedByName: String = "",
     val updatedAt: Long = System.currentTimeMillis()
 ) {
@@ -157,6 +194,14 @@ data class MarriageSchedule(
     val locationAddress: String = "",
     val penghuluAccountId: String = "",
     val penghuluName: String = "",
+    val waliStatus: String = WaliStatus.WALI_NASAB.code,
+    val waliRelationship: String = "",
+    val waliName: String = "",
+    val waliBin: String = "",
+    val waliNik: String = "",
+    val waliAddress: String = "",
+    val waliHakimAccountId: String = "",
+    val waliHakimReason: String = "",
     val validationStatus: String = ValidationStatus.MENUNGGU.code,
     val documentsComplete: Boolean = false,
     val verificationNote: String = "",
@@ -166,6 +211,31 @@ data class MarriageSchedule(
 ) {
     fun resolvedStatus(): ValidationStatus = ValidationStatus.fromCode(validationStatus)
     fun resolvedLocationType(): LocationType = LocationType.fromCode(locationType)
+    fun resolvedWaliStatus(): WaliStatus = WaliStatus.fromCode(waliStatus)
+
+    fun waliSummaryText(): String {
+        return when (resolvedWaliStatus()) {
+            WaliStatus.WALI_HAKIM -> {
+                if (waliName.isNotBlank()) "Wali Hakim: $waliName" else "Wali Hakim"
+            }
+            WaliStatus.WALI_NASAB -> {
+                val rel = waliRelationship.trim()
+                val fullName = buildString {
+                    append(waliName.trim())
+                    if (waliBin.isNotBlank()) {
+                        if (isNotEmpty()) append(" bin ")
+                        append(waliBin.trim())
+                    }
+                }
+                when {
+                    rel.isNotBlank() && fullName.isNotBlank() -> "Wali Nasab ($rel): $fullName"
+                    fullName.isNotBlank() -> "Wali Nasab: $fullName"
+                    rel.isNotBlank() -> "Wali Nasab ($rel)"
+                    else -> ""
+                }
+            }
+        }
+    }
 }
 
 sealed interface UiState<out T> {
@@ -191,6 +261,14 @@ data class ScheduleDraft(
     val locationAddress: String = "Balai Nikah KUA Donorojo",
     val penghuluAccountId: String = "",
     val penghuluName: String = "",
+    val waliStatus: WaliStatus = WaliStatus.WALI_NASAB,
+    val waliRelationship: String = "",
+    val waliName: String = "",
+    val waliBin: String = "",
+    val waliNik: String = "",
+    val waliAddress: String = "",
+    val waliHakimAccountId: String = "",
+    val waliHakimReason: String = "",
     val validationStatus: ValidationStatus = ValidationStatus.MENUNGGU,
     val documentsComplete: Boolean = false,
     val verificationNote: String = ""

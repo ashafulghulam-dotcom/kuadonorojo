@@ -89,6 +89,7 @@ class KuaRepository(
                     officerName = preset.defaultOfficerName,
                     whatsappNumber = "",
                     active = true,
+                    isWaliHakim = true,
                     createdAt = now,
                     updatedAt = now
                 )
@@ -149,6 +150,7 @@ class KuaRepository(
                     officerName = it.officerName,
                     whatsappNumber = it.whatsappNumber,
                     active = it.active,
+                    isWaliHakim = it.isWaliHakim,
                     createdAt = it.createdAt,
                     updatedAt = it.updatedAt
                 )
@@ -185,6 +187,14 @@ class KuaRepository(
                     locationAddress = it.locationAddress,
                     penghuluAccountId = it.penghuluAccountId,
                     penghuluName = it.penghuluName,
+                    waliStatus = it.waliStatus,
+                    waliRelationship = it.waliRelationship,
+                    waliName = it.waliName,
+                    waliBin = it.waliBin,
+                    waliNik = it.waliNik,
+                    waliAddress = it.waliAddress,
+                    waliHakimAccountId = it.waliHakimAccountId,
+                    waliHakimReason = it.waliHakimReason,
                     validationStatus = it.validationStatus,
                     documentsComplete = it.documentsComplete,
                     verificationNote = it.verificationNote,
@@ -212,6 +222,8 @@ class KuaRepository(
                     headOfKuaTitle = entity.headOfKuaTitle.ifBlank { ReminderSettings.DEFAULT_HEAD_OF_KUA_TITLE },
                     headOfKuaName = entity.headOfKuaName,
                     headOfKuaNip = entity.headOfKuaNip,
+                    defaultWaliHakimAccountId = entity.defaultWaliHakimAccountId,
+                    defaultWaliHakimName = entity.defaultWaliHakimName,
                     updatedByName = entity.updatedByName,
                     updatedAt = entity.updatedAt
                 )
@@ -284,7 +296,8 @@ class KuaRepository(
         password: String,
         officerName: String,
         whatsappNumber: String,
-        active: Boolean
+        active: Boolean,
+        isWaliHakim: Boolean = false
     ): Result<Unit> {
         val cleanUsername = username.trim().lowercase(Locale.ROOT)
         val cleanOfficer = officerName.trim()
@@ -329,6 +342,7 @@ class KuaRepository(
                     officerName = cleanOfficer,
                     whatsappNumber = cleanPhone,
                     active = active,
+                    isWaliHakim = isWaliHakim,
                     createdAt = now,
                     updatedAt = now
                 )
@@ -346,7 +360,8 @@ class KuaRepository(
         officerName: String,
         whatsappNumber: String,
         active: Boolean,
-        newVillage: Village? = null
+        newVillage: Village? = null,
+        isWaliHakim: Boolean = account.isWaliHakim
     ): Result<Unit> {
         val cleanUsername = newUsername.trim().lowercase(Locale.ROOT)
         val cleanOfficer = officerName.trim()
@@ -387,6 +402,7 @@ class KuaRepository(
             } else {
                 account.villageName
             }
+            val resolvedWaliHakim = if (account.resolvedRole() == UserRole.PENGHULU) isWaliHakim else false
 
             dao.upsertStaffAccount(
                 StaffAccountEntity(
@@ -400,6 +416,7 @@ class KuaRepository(
                     officerName = cleanOfficer,
                     whatsappNumber = cleanPhone,
                     active = active,
+                    isWaliHakim = resolvedWaliHakim,
                     createdAt = account.createdAt,
                     updatedAt = now
                 )
@@ -458,6 +475,8 @@ class KuaRepository(
                     headOfKuaTitle = settings.headOfKuaTitle.trim().ifBlank { ReminderSettings.DEFAULT_HEAD_OF_KUA_TITLE },
                     headOfKuaName = settings.headOfKuaName.trim().take(120),
                     headOfKuaNip = settings.headOfKuaNip.trim().take(40),
+                    defaultWaliHakimAccountId = settings.defaultWaliHakimAccountId.trim(),
+                    defaultWaliHakimName = settings.defaultWaliHakimName.trim().take(120),
                     updatedByName = updatedByName.take(100),
                     updatedAt = System.currentTimeMillis()
                 )
@@ -504,6 +523,67 @@ class KuaRepository(
                     headOfKuaTitle = cleanTitle,
                     headOfKuaName = cleanName,
                     headOfKuaNip = cleanNip,
+                    defaultWaliHakimAccountId = current?.defaultWaliHakimAccountId ?: "",
+                    defaultWaliHakimName = current?.defaultWaliHakimName ?: "",
+                    updatedByName = updatedByName.take(100),
+                    updatedAt = now
+                )
+            )
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun saveWaliHakimSettings(
+        authorizedPenghuluIds: Set<String>,
+        defaultWaliHakimAccountId: String,
+        defaultWaliHakimName: String,
+        updatedByName: String
+    ): Result<Unit> {
+        return try {
+            val now = System.currentTimeMillis()
+            val cleanDefaultId = defaultWaliHakimAccountId.trim()
+            val effectiveAuthorizedIds = if (cleanDefaultId.isNotBlank()) {
+                authorizedPenghuluIds + cleanDefaultId
+            } else {
+                authorizedPenghuluIds
+            }
+
+            val penghulus = dao.getStaffByRoleOnce(UserRole.PENGHULU.code)
+            penghulus.forEach { entity ->
+                val shouldBeWaliHakim = entity.id in effectiveAuthorizedIds
+                if (entity.isWaliHakim != shouldBeWaliHakim) {
+                    dao.updateStaffWaliHakim(
+                        id = entity.id,
+                        isWaliHakim = shouldBeWaliHakim,
+                        updatedAt = now
+                    )
+                }
+            }
+
+            val matchedDefault = penghulus.firstOrNull { it.id == cleanDefaultId }
+            val resolvedDefaultName = when {
+                matchedDefault != null -> matchedDefault.officerName
+                else -> defaultWaliHakimName.trim().take(120)
+            }
+
+            val current = dao.getReminderSettingsOnce()
+            dao.upsertReminderSettings(
+                ReminderSettingsEntity(
+                    id = ReminderSettings.GLOBAL_DOC_ID,
+                    autoPhoneNotifEnabled = current?.autoPhoneNotifEnabled ?: true,
+                    whatsappReminderEnabled = current?.whatsappReminderEnabled ?: true,
+                    remindOnWeddingDay = current?.remindOnWeddingDay ?: true,
+                    remindOneDayBefore = current?.remindOneDayBefore ?: true,
+                    remindThreeDaysBefore = current?.remindThreeDaysBefore ?: false,
+                    reminderTime = current?.reminderTime ?: "07:00",
+                    whatsappTemplate = current?.whatsappTemplate ?: ReminderSettings.DEFAULT_WA_TEMPLATE,
+                    headOfKuaTitle = current?.headOfKuaTitle ?: ReminderSettings.DEFAULT_HEAD_OF_KUA_TITLE,
+                    headOfKuaName = current?.headOfKuaName ?: "",
+                    headOfKuaNip = current?.headOfKuaNip ?: "",
+                    defaultWaliHakimAccountId = matchedDefault?.id ?: "",
+                    defaultWaliHakimName = resolvedDefaultName,
                     updatedByName = updatedByName.take(100),
                     updatedAt = now
                 )
@@ -588,6 +668,14 @@ class KuaRepository(
                     locationAddress = address,
                     penghuluAccountId = draft.penghuluAccountId.trim(),
                     penghuluName = penghulu,
+                    waliStatus = draft.waliStatus.code,
+                    waliRelationship = draft.waliRelationship.trim().take(120),
+                    waliName = draft.waliName.trim().take(120),
+                    waliBin = draft.waliBin.trim().take(100),
+                    waliNik = draft.waliNik.trim().take(20),
+                    waliAddress = draft.waliAddress.trim().take(250),
+                    waliHakimAccountId = draft.waliHakimAccountId.trim(),
+                    waliHakimReason = draft.waliHakimReason.trim().take(250),
                     validationStatus = draft.validationStatus.code,
                     documentsComplete = draft.documentsComplete,
                     verificationNote = note,

@@ -225,6 +225,7 @@ class KuaViewModel(
         officerName: String,
         whatsappNumber: String,
         active: Boolean,
+        isWaliHakim: Boolean = false,
         onSuccess: () -> Unit = {}
     ) {
         viewModelScope.launch {
@@ -234,7 +235,8 @@ class KuaViewModel(
                 password = password,
                 officerName = officerName,
                 whatsappNumber = whatsappNumber,
-                active = active
+                active = active,
+                isWaliHakim = isWaliHakim
             )
             _isSaving.value = false
             result.fold(
@@ -257,6 +259,7 @@ class KuaViewModel(
         whatsappNumber: String,
         active: Boolean,
         newVillage: Village? = null,
+        isWaliHakim: Boolean = account.isWaliHakim,
         onSuccess: () -> Unit = {}
     ) {
         viewModelScope.launch {
@@ -268,7 +271,8 @@ class KuaViewModel(
                 officerName = officerName,
                 whatsappNumber = whatsappNumber,
                 active = active,
-                newVillage = newVillage
+                newVillage = newVillage,
+                isWaliHakim = isWaliHakim
             )
             _isSaving.value = false
             result.fold(
@@ -344,6 +348,34 @@ class KuaViewModel(
                 },
                 onFailure = { error ->
                     _actionMessage.value = error.message ?: "Gagal menyimpan data Kepala KUA."
+                }
+            )
+        }
+    }
+
+    fun saveWaliHakimSettings(
+        authorizedPenghuluIds: Set<String>,
+        defaultWaliHakimAccountId: String,
+        defaultWaliHakimName: String,
+        onSuccess: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            _isSaving.value = true
+            val officerName = _activeStaffAccount.value?.officerName ?: "Admin KUA Donorojo"
+            val result = repository.saveWaliHakimSettings(
+                authorizedPenghuluIds = authorizedPenghuluIds,
+                defaultWaliHakimAccountId = defaultWaliHakimAccountId,
+                defaultWaliHakimName = defaultWaliHakimName,
+                updatedByName = officerName
+            )
+            _isSaving.value = false
+            result.fold(
+                onSuccess = {
+                    _actionMessage.value = "Pengaturan Penghulu Wali Hakim berhasil disimpan."
+                    onSuccess()
+                },
+                onFailure = { error ->
+                    _actionMessage.value = error.message ?: "Gagal menyimpan pengaturan Wali Hakim."
                 }
             )
         }

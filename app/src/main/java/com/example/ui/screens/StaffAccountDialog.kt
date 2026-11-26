@@ -309,7 +309,8 @@ fun AddPenghuluAccountDialog(
         password: String,
         officerName: String,
         whatsappNumber: String,
-        active: Boolean
+        active: Boolean,
+        isWaliHakim: Boolean
     ) -> Unit
 ) {
     fun suggestUsername(): String {
@@ -329,6 +330,7 @@ fun AddPenghuluAccountDialog(
     var passwordVisible by remember { mutableStateOf(false) }
     var whatsappNumber by remember { mutableStateOf("") }
     var active by remember { mutableStateOf(true) }
+    var isWaliHakim by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
@@ -424,6 +426,26 @@ fun AddPenghuluAccountDialog(
                     Switch(checked = active, onCheckedChange = { active = it })
                 }
 
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Berwenang sebagai Wali Hakim", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Tampilkan Penghulu ini dalam pilihan Penghulu Wali Hakim di formulir pendaftaran nikah",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = isWaliHakim,
+                        onCheckedChange = { isWaliHakim = it },
+                        modifier = Modifier.testTag("add_penghulu_wali_hakim_switch")
+                    )
+                }
+
                 if (errorMsg != null) {
                     Text(
                         text = errorMsg!!,
@@ -456,7 +478,8 @@ fun AddPenghuluAccountDialog(
                                 password,
                                 cleanName,
                                 whatsappNumber.trim(),
-                                active
+                                active,
+                                isWaliHakim
                             )
                         }
                     }
@@ -495,7 +518,8 @@ fun StaffAccountDialog(
         officerName: String,
         whatsappNumber: String,
         active: Boolean,
-        newVillage: Village?
+        newVillage: Village?,
+        isWaliHakim: Boolean
     ) -> Unit
 ) {
     val role = account.resolvedRole()
@@ -514,6 +538,7 @@ fun StaffAccountDialog(
     var officerName by remember { mutableStateOf(account.officerName) }
     var whatsappNumber by remember { mutableStateOf(account.whatsappNumber) }
     var active by remember { mutableStateOf(account.active) }
+    var isWaliHakim by remember { mutableStateOf(account.isWaliHakim) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
@@ -648,6 +673,28 @@ fun StaffAccountDialog(
                     }
                 }
 
+                if (isPenghuluRole) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Berwenang sebagai Wali Hakim", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Tampilkan Penghulu ini pada pilihan Wali Hakim saat input nikah",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = isWaliHakim,
+                            onCheckedChange = { isWaliHakim = it },
+                            modifier = Modifier.testTag("edit_penghulu_wali_hakim_switch")
+                        )
+                    }
+                }
+
                 if (errorMsg != null) {
                     Text(
                         text = errorMsg!!,
@@ -676,7 +723,8 @@ fun StaffAccountDialog(
                                 cleanName,
                                 whatsappNumber.trim(),
                                 if (isAdminRole) true else active,
-                                if (isModinRole) selectedVillage else null
+                                if (isModinRole) selectedVillage else null,
+                                if (isPenghuluRole) isWaliHakim else false
                             )
                         }
                     }

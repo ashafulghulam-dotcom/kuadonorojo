@@ -35,6 +35,7 @@ data class StaffAccountEntity(
     val officerName: String,
     val whatsappNumber: String,
     val active: Boolean,
+    val isWaliHakim: Boolean = false,
     val createdAt: Long,
     val updatedAt: Long
 )
@@ -57,6 +58,14 @@ data class MarriageScheduleEntity(
     val locationAddress: String,
     val penghuluAccountId: String = "",
     val penghuluName: String,
+    val waliStatus: String = WaliStatus.WALI_NASAB.code,
+    val waliRelationship: String = "",
+    val waliName: String = "",
+    val waliBin: String = "",
+    val waliNik: String = "",
+    val waliAddress: String = "",
+    val waliHakimAccountId: String = "",
+    val waliHakimReason: String = "",
     val validationStatus: String,
     val documentsComplete: Boolean,
     val verificationNote: String,
@@ -78,6 +87,8 @@ data class ReminderSettingsEntity(
     val headOfKuaTitle: String = ReminderSettings.DEFAULT_HEAD_OF_KUA_TITLE,
     val headOfKuaName: String = "",
     val headOfKuaNip: String = "",
+    val defaultWaliHakimAccountId: String = "",
+    val defaultWaliHakimName: String = "",
     val updatedByName: String,
     val updatedAt: Long
 )
@@ -122,6 +133,12 @@ interface KuaDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertStaffAccountsIfMissing(accounts: List<StaffAccountEntity>)
+
+    @Query("SELECT * FROM staff_accounts WHERE role = :role")
+    suspend fun getStaffByRoleOnce(role: String): List<StaffAccountEntity>
+
+    @Query("UPDATE staff_accounts SET isWaliHakim = :isWaliHakim, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateStaffWaliHakim(id: String, isWaliHakim: Boolean, updatedAt: Long)
 
     @Query("DELETE FROM staff_accounts WHERE id = :id")
     suspend fun deleteStaffAccount(id: String)
@@ -171,7 +188,7 @@ interface KuaDao {
         MarriageScheduleEntity::class,
         ReminderSettingsEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class KuaLocalDatabase : RoomDatabase() {
@@ -210,6 +227,44 @@ abstract class KuaLocalDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE staff_accounts ADD COLUMN isWaliHakim INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE reminder_settings ADD COLUMN defaultWaliHakimAccountId TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "ALTER TABLE reminder_settings ADD COLUMN defaultWaliHakimName TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "ALTER TABLE marriage_schedules ADD COLUMN waliStatus TEXT NOT NULL DEFAULT 'WALI_NASAB'"
+                )
+                db.execSQL(
+                    "ALTER TABLE marriage_schedules ADD COLUMN waliRelationship TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "ALTER TABLE marriage_schedules ADD COLUMN waliName TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "ALTER TABLE marriage_schedules ADD COLUMN waliBin TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "ALTER TABLE marriage_schedules ADD COLUMN waliNik TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "ALTER TABLE marriage_schedules ADD COLUMN waliAddress TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "ALTER TABLE marriage_schedules ADD COLUMN waliHakimAccountId TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    "ALTER TABLE marriage_schedules ADD COLUMN waliHakimReason TEXT NOT NULL DEFAULT ''"
+                )
+            }
+        }
+
         fun getInstance(context: Context): KuaLocalDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -217,7 +272,7 @@ abstract class KuaLocalDatabase : RoomDatabase() {
                     KuaLocalDatabase::class.java,
                     "kua_donorojo_local.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                     .also { INSTANCE = it }
             }

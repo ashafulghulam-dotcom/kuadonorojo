@@ -54,11 +54,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.data.LocationType
 import com.example.data.MarriageSchedule
+import com.example.data.ReminderSettings
 import com.example.data.ScheduleDraft
 import com.example.data.StaffAccount
 import com.example.data.UserRole
 import com.example.data.ValidationStatus
 import com.example.data.Village
+import com.example.data.WaliReferenceData
+import com.example.data.WaliStatus
 import com.example.data.formatIndonesianDate
 import com.example.data.generateRegistrationNumber
 import com.example.data.todayIsoDate
@@ -73,6 +76,7 @@ fun ScheduleFormSheet(
     existingSchedule: MarriageSchedule?,
     villages: List<Village>,
     staffAccounts: List<StaffAccount>,
+    reminderSettings: ReminderSettings,
     existingScheduleCount: Int,
     isSaving: Boolean,
     onDismiss: () -> Unit,
@@ -178,6 +182,135 @@ fun ScheduleFormSheet(
         )
     }
 
+    // Wali Nikah state (Wali Nasab / Wali Hakim)
+    val authorizedWaliHakimPenghulus = remember(activePenghulus, reminderSettings.defaultWaliHakimAccountId) {
+        val authorized = activePenghulus.filter {
+            it.isWaliHakim || it.id == reminderSettings.defaultWaliHakimAccountId
+        }
+        authorized.sortedByDescending { it.id == reminderSettings.defaultWaliHakimAccountId }
+    }
+    val otherActivePenghulus = remember(activePenghulus, authorizedWaliHakimPenghulus) {
+        val authIds = authorizedWaliHakimPenghulus.map { it.id }.toSet()
+        activePenghulus.filter { it.id !in authIds }
+    }
+    val defaultWaliHakimAccount = remember(authorizedWaliHakimPenghulus, reminderSettings.defaultWaliHakimAccountId) {
+        authorizedWaliHakimPenghulus.firstOrNull { it.id == reminderSettings.defaultWaliHakimAccountId }
+            ?: authorizedWaliHakimPenghulus.firstOrNull()
+    }
+
+    var waliStatus by remember {
+        mutableStateOf(existingSchedule?.resolvedWaliStatus() ?: WaliStatus.WALI_NASAB)
+    }
+
+    // Wali Nasab fields
+    val existingRel = existingSchedule?.waliRelationship.orEmpty()
+    val existingRelIsPreset = existingRel.isBlank() || WaliReferenceData.nasabRelationships.any {
+        it.equals(existingRel, ignoreCase = true)
+    }
+    var selectedWaliRelationship by remember {
+        mutableStateOf(
+            when {
+                existingSchedule?.resolvedWaliStatus() == WaliStatus.WALI_NASAB && existingRel.isNotBlank() && existingRelIsPreset ->
+                    WaliReferenceData.nasabRelationships.first { it.equals(existingRel, ignoreCase = true) }
+                existingSchedule == null -> WaliReferenceData.nasabRelationships.first()
+                else -> WaliReferenceData.nasabRelationships.first()
+            }
+        )
+    }
+    var useManualWaliRelationship by remember {
+        mutableStateOf(
+            existingSchedule?.resolvedWaliStatus() == WaliStatus.WALI_NASAB &&
+                existingRel.isNotBlank() &&
+                !existingRelIsPreset
+        )
+    }
+    var manualWaliRelationship by remember {
+        mutableStateOf(if (useManualWaliRelationship) existingRel else "")
+    }
+    var waliNasabName by remember {
+        mutableStateOf(
+            if (existingSchedule?.resolvedWaliStatus() == WaliStatus.WALI_NASAB) existingSchedule.waliName else ""
+        )
+    }
+    var waliBin by remember {
+        mutableStateOf(
+            if (existingSchedule?.resolvedWaliStatus() == WaliStatus.WALI_NASAB) existingSchedule.waliBin else ""
+        )
+    }
+    var waliNik by remember {
+        mutableStateOf(
+            if (existingSchedule?.resolvedWaliStatus() == WaliStatus.WALI_NASAB) existingSchedule.waliNik else ""
+        )
+    }
+    var waliNasabAddress by remember {
+        mutableStateOf(
+            if (existingSchedule?.resolvedWaliStatus() == WaliStatus.WALI_NASAB) existingSchedule.waliAddress else ""
+        )
+    }
+
+    // Wali Hakim fields
+    val initialWaliHakimAccount = remember(existingSchedule, staffAccounts, defaultWaliHakimAccount) {
+        if (existingSchedule?.resolvedWaliStatus() == WaliStatus.WALI_HAKIM) {
+            val whId = existingSchedule.waliHakimAccountId
+            val whName = existingSchedule.waliName
+            when {
+                whId.isNotBlank() -> staffAccounts.firstOrNull { it.id == whId }
+                whName.isNotBlank() -> staffAccounts.firstOrNull {
+                    it.resolvedRole() == UserRole.PENGHULU && it.officerName.equals(whName, ignoreCase = true)
+                }
+                else -> null
+            }
+        } else {
+            defaultWaliHakimAccount
+        }
+    }
+    var selectedWaliHakimId by remember {
+        mutableStateOf(initialWaliHakimAccount?.id.orEmpty())
+    }
+    var useManualWaliHakim by remember {
+        mutableStateOf(
+            when {
+                existingSchedule?.resolvedWaliStatus() == WaliStatus.WALI_HAKIM ->
+                    existingSchedule.waliName.isNotBlank() && initialWaliHakimAccount == null
+                else -> defaultWaliHakimAccount == null && reminderSettings.defaultWaliHakimName.isNotBlank()
+            }
+        )
+    }
+    var manualWaliHakimName by remember {
+        mutableStateOf(
+            when {
+                existingSchedule?.resolvedWaliStatus() == WaliStatus.WALI_HAKIM && initialWaliHakimAccount == null ->
+                    existingSchedule.waliName
+                defaultWaliHakimAccount == null -> reminderSettings.defaultWaliHakimName
+                else -> ""
+            }
+        )
+    }
+    val existingReason = existingSchedule?.waliHakimReason.orEmpty()
+    val existingReasonIsPreset = existingReason.isBlank() || WaliReferenceData.waliHakimReasons.any {
+        it.equals(existingReason, ignoreCase = true)
+    }
+    var selectedWaliHakimReason by remember {
+        mutableStateOf(
+            if (existingReason.isNotBlank() && existingReasonIsPreset) {
+                WaliReferenceData.waliHakimReasons.first { it.equals(existingReason, ignoreCase = true) }
+            } else {
+                WaliReferenceData.waliHakimReasons.first()
+            }
+        )
+    }
+    var useManualWaliHakimReason by remember {
+        mutableStateOf(existingReason.isNotBlank() && !existingReasonIsPreset)
+    }
+    var manualWaliHakimReason by remember {
+        mutableStateOf(if (useManualWaliHakimReason) existingReason else "")
+    }
+    var waliHakimNote by remember {
+        mutableStateOf(
+            if (existingSchedule?.resolvedWaliStatus() == WaliStatus.WALI_HAKIM) existingSchedule.waliAddress else ""
+        )
+    }
+
     var validationStatus by remember {
         mutableStateOf(existingSchedule?.resolvedStatus() ?: ValidationStatus.MENUNGGU)
     }
@@ -187,6 +320,9 @@ fun ScheduleFormSheet(
     var villageDropdownExpanded by remember { mutableStateOf(false) }
     var modinDropdownExpanded by remember { mutableStateOf(false) }
     var penghuluDropdownExpanded by remember { mutableStateOf(false) }
+    var waliRelDropdownExpanded by remember { mutableStateOf(false) }
+    var waliHakimDropdownExpanded by remember { mutableStateOf(false) }
+    var waliHakimReasonDropdownExpanded by remember { mutableStateOf(false) }
     var statusDropdownExpanded by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
@@ -197,6 +333,9 @@ fun ScheduleFormSheet(
     }
     val selectedPenghuluAccount = remember(selectedPenghuluId, staffAccounts) {
         staffAccounts.firstOrNull { it.id == selectedPenghuluId }
+    }
+    val selectedWaliHakimAccount = remember(selectedWaliHakimId, staffAccounts) {
+        staffAccounts.firstOrNull { it.id == selectedWaliHakimId }
     }
 
     ModalBottomSheet(
@@ -618,6 +757,398 @@ fun ScheduleFormSheet(
                 )
             }
 
+            // Status & Data Wali Nikah (Wali Nasab / Wali Hakim)
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("form_wali_section")
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "Status & Data Wali Nikah *",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        WaliStatus.entries.forEach { option ->
+                            val selected = waliStatus == option
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(
+                                    width = if (selected) 1.5.dp else 1.dp,
+                                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .clickable {
+                                        waliStatus = option
+                                        if (option == WaliStatus.WALI_HAKIM &&
+                                            selectedWaliHakimId.isBlank() &&
+                                            manualWaliHakimName.isBlank()
+                                        ) {
+                                            if (defaultWaliHakimAccount != null) {
+                                                selectedWaliHakimId = defaultWaliHakimAccount.id
+                                                useManualWaliHakim = false
+                                            } else if (reminderSettings.defaultWaliHakimName.isNotBlank()) {
+                                                useManualWaliHakim = true
+                                                manualWaliHakimName = reminderSettings.defaultWaliHakimName
+                                            }
+                                        }
+                                    }
+                                    .testTag("form_wali_status_${option.code.lowercase()}")
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = option.label,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (selected) {
+                                            MaterialTheme.colorScheme.onPrimaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurface
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (waliStatus == WaliStatus.WALI_NASAB) {
+                        // Hubungan / Status Wali Nasab
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = if (useManualWaliRelationship) {
+                                    "Lainnya (Tulis Manual)"
+                                } else {
+                                    selectedWaliRelationship
+                                },
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Status / Hubungan Wali Nasab *") },
+                                trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("form_wali_relationship_picker")
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clickable { waliRelDropdownExpanded = true }
+                            )
+                            DropdownMenu(
+                                expanded = waliRelDropdownExpanded,
+                                onDismissRequest = { waliRelDropdownExpanded = false }
+                            ) {
+                                WaliReferenceData.nasabRelationships.forEach { rel ->
+                                    DropdownMenuItem(
+                                        text = { Text(rel) },
+                                        onClick = {
+                                            selectedWaliRelationship = rel
+                                            useManualWaliRelationship = false
+                                            manualWaliRelationship = ""
+                                            waliRelDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "Lainnya (Tulis Hubungan Manual)...",
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    },
+                                    onClick = {
+                                        useManualWaliRelationship = true
+                                        waliRelDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+
+                        if (useManualWaliRelationship) {
+                            OutlinedTextField(
+                                value = manualWaliRelationship,
+                                onValueChange = { manualWaliRelationship = it.take(120) },
+                                label = { Text("Hubungan Wali Nasab (Manual) *") },
+                                placeholder = { Text("Contoh: Kakek dari garis ayah") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("form_wali_relationship_manual")
+                            )
+                        }
+
+                        OutlinedTextField(
+                            value = waliNasabName,
+                            onValueChange = { waliNasabName = it.take(120) },
+                            label = { Text("Nama Lengkap Wali Nasab *") },
+                            placeholder = { Text("Contoh: H. Supriyadi") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("form_wali_name")
+                        )
+
+                        OutlinedTextField(
+                            value = waliBin,
+                            onValueChange = { waliBin = it.take(100) },
+                            label = { Text("Bin (Nama Ayah Wali)") },
+                            placeholder = { Text("Contoh: Kasan / Ahmad") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("form_wali_bin")
+                        )
+
+                        OutlinedTextField(
+                            value = waliNik,
+                            onValueChange = { waliNik = it.filter { c -> c.isDigit() }.take(16) },
+                            label = { Text("NIK Wali Nasab (Opsional)") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("form_wali_nik")
+                        )
+
+                        OutlinedTextField(
+                            value = waliNasabAddress,
+                            onValueChange = { waliNasabAddress = it.take(250) },
+                            label = { Text("Alamat / Keterangan Wali (Opsional)") },
+                            placeholder = { Text("Contoh: RT 02 / RW 01 Desa Tulakan") },
+                            minLines = 1,
+                            maxLines = 3,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("form_wali_address")
+                        )
+                    } else {
+                        // Wali Hakim Picker (Penghulu yang menjadi Wali Hakim)
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            val waliHakimDisplay = when {
+                                useManualWaliHakim -> "Tulis Nama Wali Hakim Manual"
+                                selectedWaliHakimAccount != null -> {
+                                    val defaultTag = if (selectedWaliHakimAccount.id == reminderSettings.defaultWaliHakimAccountId) {
+                                        " • Utama"
+                                    } else {
+                                        ""
+                                    }
+                                    "${selectedWaliHakimAccount.officerName}$defaultTag"
+                                }
+                                else -> "Pilih Penghulu Wali Hakim *"
+                            }
+                            OutlinedTextField(
+                                value = waliHakimDisplay,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Penghulu Wali Hakim *") },
+                                trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("form_wali_hakim_picker")
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clickable { waliHakimDropdownExpanded = true }
+                            )
+                            DropdownMenu(
+                                expanded = waliHakimDropdownExpanded,
+                                onDismissRequest = { waliHakimDropdownExpanded = false }
+                            ) {
+                                authorizedWaliHakimPenghulus.forEach { penghulu ->
+                                    val isDefault = penghulu.id == reminderSettings.defaultWaliHakimAccountId
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(penghulu.officerName, fontWeight = FontWeight.SemiBold)
+                                                Text(
+                                                    text = if (isDefault) {
+                                                        "Wali Hakim Utama • @${penghulu.username}"
+                                                    } else {
+                                                        "Penghulu Wali Hakim • @${penghulu.username}"
+                                                    },
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            selectedWaliHakimId = penghulu.id
+                                            useManualWaliHakim = false
+                                            manualWaliHakimName = ""
+                                            waliHakimDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                                otherActivePenghulus.forEach { penghulu ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(penghulu.officerName, fontWeight = FontWeight.Medium)
+                                                Text(
+                                                    text = "Penghulu KUA • @${penghulu.username}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            selectedWaliHakimId = penghulu.id
+                                            useManualWaliHakim = false
+                                            manualWaliHakimName = ""
+                                            waliHakimDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "Tulis Nama Wali Hakim Manual...",
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    },
+                                    onClick = {
+                                        selectedWaliHakimId = ""
+                                        useManualWaliHakim = true
+                                        waliHakimDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+
+                        if (useManualWaliHakim) {
+                            OutlinedTextField(
+                                value = manualWaliHakimName,
+                                onValueChange = { manualWaliHakimName = it.take(120) },
+                                label = { Text("Nama Penghulu / Kepala KUA Wali Hakim *") },
+                                placeholder = { Text("Contoh: H. Ahmad Fauzi, S.Ag.") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("form_wali_hakim_manual_input")
+                            )
+                        }
+
+                        Text(
+                            text = if (authorizedWaliHakimPenghulus.isNotEmpty()) {
+                                "${authorizedWaliHakimPenghulus.size} Penghulu ditugaskan sebagai Wali Hakim. Atur daftarnya di menu Akun → Pengaturan Penghulu Wali Hakim."
+                            } else {
+                                "Belum ada Penghulu Wali Hakim ditetapkan. Anda bisa mengaturnya di menu Akun → Pengaturan Penghulu Wali Hakim."
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        // Sebab / Alasan Wali Hakim
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = if (useManualWaliHakimReason) {
+                                    "Lainnya (Tulis Manual)"
+                                } else {
+                                    selectedWaliHakimReason
+                                },
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Sebab / Alasan Wali Hakim *") },
+                                trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("form_wali_hakim_reason_picker")
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clickable { waliHakimReasonDropdownExpanded = true }
+                            )
+                            DropdownMenu(
+                                expanded = waliHakimReasonDropdownExpanded,
+                                onDismissRequest = { waliHakimReasonDropdownExpanded = false }
+                            ) {
+                                WaliReferenceData.waliHakimReasons.forEach { reason ->
+                                    DropdownMenuItem(
+                                        text = { Text(reason) },
+                                        onClick = {
+                                            selectedWaliHakimReason = reason
+                                            useManualWaliHakimReason = false
+                                            manualWaliHakimReason = ""
+                                            waliHakimReasonDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "Lainnya (Tulis Alasan Manual)...",
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    },
+                                    onClick = {
+                                        useManualWaliHakimReason = true
+                                        waliHakimReasonDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+
+                        if (useManualWaliHakimReason) {
+                            OutlinedTextField(
+                                value = manualWaliHakimReason,
+                                onValueChange = { manualWaliHakimReason = it.take(250) },
+                                label = { Text("Alasan Wali Hakim (Manual) *") },
+                                placeholder = { Text("Tulis alasan penggunaan Wali Hakim") },
+                                minLines = 1,
+                                maxLines = 3,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("form_wali_hakim_reason_manual")
+                            )
+                        }
+
+                        OutlinedTextField(
+                            value = waliHakimNote,
+                            onValueChange = { waliHakimNote = it.take(250) },
+                            label = { Text("No. Penetapan PA / Keterangan (Opsional)") },
+                            placeholder = { Text("Contoh: Penetapan PA Jepara No. ...") },
+                            minLines = 1,
+                            maxLines = 3,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("form_wali_hakim_note")
+                        )
+                    }
+                }
+            }
+
             // Validation Status selector
             Box(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
@@ -730,6 +1261,29 @@ fun ScheduleFormSheet(
                         } else {
                             selectedPenghuluAccount?.officerName.orEmpty()
                         }
+                        val resolvedWaliRel = if (waliStatus == WaliStatus.WALI_NASAB) {
+                            if (useManualWaliRelationship) manualWaliRelationship.trim() else selectedWaliRelationship
+                        } else {
+                            "Wali Hakim"
+                        }
+                        val resolvedWaliHakimId = if (waliStatus == WaliStatus.WALI_HAKIM && !useManualWaliHakim) {
+                            selectedWaliHakimAccount?.id.orEmpty()
+                        } else {
+                            ""
+                        }
+                        val resolvedWaliName = if (waliStatus == WaliStatus.WALI_NASAB) {
+                            waliNasabName.trim()
+                        } else if (useManualWaliHakim) {
+                            manualWaliHakimName.trim()
+                        } else {
+                            selectedWaliHakimAccount?.officerName.orEmpty()
+                        }
+                        val resolvedWaliReason = if (waliStatus == WaliStatus.WALI_HAKIM) {
+                            if (useManualWaliHakimReason) manualWaliHakimReason.trim() else selectedWaliHakimReason
+                        } else {
+                            ""
+                        }
+
                         when {
                             village == null -> validationError = "Pilih wilayah desa terlebih dahulu."
                             resolvedModinName.length < 2 -> validationError = "Pilih atau isi nama Modin pendamping terlebih dahulu."
@@ -737,6 +1291,14 @@ fun ScheduleFormSheet(
                             groomName.trim().length < 2 -> validationError = "Nama calon suami wajib diisi."
                             brideName.trim().length < 2 -> validationError = "Nama calon istri wajib diisi."
                             locationAddress.trim().length < 2 -> validationError = "Alamat lokasi akad wajib diisi."
+                            waliStatus == WaliStatus.WALI_NASAB && resolvedWaliRel.length < 2 ->
+                                validationError = "Status / hubungan wali nasab wajib diisi."
+                            waliStatus == WaliStatus.WALI_NASAB && resolvedWaliName.length < 2 ->
+                                validationError = "Nama lengkap wali nasab wajib diisi."
+                            waliStatus == WaliStatus.WALI_HAKIM && resolvedWaliName.length < 2 ->
+                                validationError = "Pilih atau isi nama Penghulu Wali Hakim terlebih dahulu."
+                            waliStatus == WaliStatus.WALI_HAKIM && resolvedWaliReason.length < 2 ->
+                                validationError = "Sebab / alasan Wali Hakim wajib diisi."
                             else -> {
                                 validationError = null
                                 onSubmit(
@@ -757,6 +1319,18 @@ fun ScheduleFormSheet(
                                         locationAddress = locationAddress.trim(),
                                         penghuluAccountId = resolvedPenghuluId,
                                         penghuluName = resolvedPenghuluName,
+                                        waliStatus = waliStatus,
+                                        waliRelationship = resolvedWaliRel,
+                                        waliName = resolvedWaliName,
+                                        waliBin = if (waliStatus == WaliStatus.WALI_NASAB) waliBin.trim() else "",
+                                        waliNik = if (waliStatus == WaliStatus.WALI_NASAB) waliNik.trim() else "",
+                                        waliAddress = if (waliStatus == WaliStatus.WALI_NASAB) {
+                                            waliNasabAddress.trim()
+                                        } else {
+                                            waliHakimNote.trim()
+                                        },
+                                        waliHakimAccountId = resolvedWaliHakimId,
+                                        waliHakimReason = resolvedWaliReason,
                                         validationStatus = validationStatus,
                                         documentsComplete = documentsComplete,
                                         verificationNote = verificationNote.trim()

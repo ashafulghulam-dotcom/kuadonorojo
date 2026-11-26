@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.FactCheck
+import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.ManageAccounts
@@ -150,6 +151,7 @@ fun AdminDashboardScreen(
         officerName: String,
         whatsappNumber: String,
         active: Boolean,
+        isWaliHakim: Boolean,
         onSuccess: () -> Unit
     ) -> Unit,
     onUpdateStaffAccount: (
@@ -160,11 +162,18 @@ fun AdminDashboardScreen(
         whatsappNumber: String,
         active: Boolean,
         newVillage: Village?,
+        isWaliHakim: Boolean,
         onSuccess: () -> Unit
     ) -> Unit,
     onDeleteStaffAccount: (StaffAccount, () -> Unit) -> Unit,
     onSaveReminderSettings: (ReminderSettings) -> Unit,
-    onSaveHeadOfKuaSettings: (title: String, name: String, nip: String, onSuccess: () -> Unit) -> Unit
+    onSaveHeadOfKuaSettings: (title: String, name: String, nip: String, onSuccess: () -> Unit) -> Unit,
+    onSaveWaliHakimSettings: (
+        authorizedPenghuluIds: Set<String>,
+        defaultWaliHakimAccountId: String,
+        defaultWaliHakimName: String,
+        onSuccess: () -> Unit
+    ) -> Unit
 ) {
     val context = LocalContext.current
     var selectedTab by remember { mutableStateOf(AdminTab.SCHEDULES) }
@@ -185,6 +194,7 @@ fun AdminDashboardScreen(
     var deletingAccount by remember { mutableStateOf<StaffAccount?>(null) }
     var showMonthlyReportSheet by remember { mutableStateOf(false) }
     var showHeadOfKuaDialog by remember { mutableStateOf(false) }
+    var showWaliHakimSettingsDialog by remember { mutableStateOf(false) }
 
     var hasNotifPermission by remember {
         mutableStateOf(SmartReminderManager.hasNotificationPermission(context))
@@ -793,6 +803,129 @@ fun AdminDashboardScreen(
                             }
                         }
 
+                        item(key = "wali_hakim_settings_card") {
+                            val penghuluList = staffAccounts.filter { it.resolvedRole() == UserRole.PENGHULU }
+                            val waliHakimList = penghuluList.filter {
+                                it.isWaliHakim || it.id == reminderSettings.defaultWaliHakimAccountId
+                            }
+                            val defaultWaliHakimAccount = penghuluList.firstOrNull {
+                                it.id == reminderSettings.defaultWaliHakimAccountId
+                            }
+                            val defaultDisplay = when {
+                                defaultWaliHakimAccount != null ->
+                                    "${defaultWaliHakimAccount.officerName} (@${defaultWaliHakimAccount.username})"
+                                reminderSettings.defaultWaliHakimName.isNotBlank() ->
+                                    reminderSettings.defaultWaliHakimName
+                                waliHakimList.isNotEmpty() ->
+                                    waliHakimList.first().officerName
+                                else -> "Belum ditentukan"
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(
+                                    1.2.dp,
+                                    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.4f)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("card_wali_hakim_settings")
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.tertiaryContainer
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Gavel,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.tertiary,
+                                                modifier = Modifier
+                                                    .padding(10.dp)
+                                                    .size(22.dp)
+                                            )
+                                        }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Pengaturan Penghulu Wali Hakim",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "Tentukan Penghulu yang bertugas menjadi Wali Hakim pada pendaftaran nikah.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                                        ) {
+                                            Text(
+                                                text = "Wali Hakim Utama (Otomatis di Form)",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.tertiary,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            Text(
+                                                text = defaultDisplay,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = if (waliHakimList.isNotEmpty()) {
+                                                    "${waliHakimList.size} Penghulu ditugaskan sebagai Wali Hakim: ${
+                                                        waliHakimList.joinToString(", ") { it.officerName }
+                                                    }"
+                                                } else {
+                                                    "Belum ada akun Penghulu ditandai sebagai Wali Hakim."
+                                                },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { showWaliHakimSettingsDialog = true },
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(46.dp)
+                                            .testTag("btn_open_wali_hakim_settings")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Gavel,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Atur Penghulu Wali Hakim")
+                                    }
+                                }
+                            }
+                        }
+
                         item(key = "accounts_intro") {
                             val totalPenghuluCount = staffAccounts.count { it.resolvedRole() == UserRole.PENGHULU }
                             val totalModinCount = staffAccounts.count { it.resolvedRole() == UserRole.MODIN }
@@ -1003,6 +1136,7 @@ fun AdminDashboardScreen(
                                             UserRole.ADMIN -> schedules.size
                                             UserRole.PENGHULU -> schedules.count {
                                                 it.penghuluAccountId == account.id ||
+                                                    it.waliHakimAccountId == account.id ||
                                                     (it.penghuluAccountId.isBlank() &&
                                                         it.penghuluName.equals(account.officerName, ignoreCase = true))
                                             }
@@ -1014,6 +1148,8 @@ fun AdminDashboardScreen(
                                         StaffAccountAdminCard(
                                             account = account,
                                             scheduleCount = scheduleCount,
+                                            isDefaultWaliHakim = account.resolvedRole() == UserRole.PENGHULU &&
+                                                account.id == reminderSettings.defaultWaliHakimAccountId,
                                             onEdit = { editingAccount = account },
                                             onDelete = if (account.resolvedRole() != UserRole.ADMIN) {
                                                 { deletingAccount = account }
@@ -1077,6 +1213,7 @@ fun AdminDashboardScreen(
             existingSchedule = editingSchedule,
             villages = villages,
             staffAccounts = staffAccounts,
+            reminderSettings = reminderSettings,
             existingScheduleCount = schedules.size,
             isSaving = isSaving,
             onDismiss = {
@@ -1142,13 +1279,14 @@ fun AdminDashboardScreen(
             existingAccounts = staffAccounts,
             isSaving = isSaving,
             onDismiss = { showAddPenghuluDialog = false },
-            onCreate = { username, password, officerName, whatsappNumber, active ->
+            onCreate = { username, password, officerName, whatsappNumber, active, isWaliHakim ->
                 onCreatePenghuluAccount(
                     username,
                     password,
                     officerName,
                     whatsappNumber,
-                    active
+                    active,
+                    isWaliHakim
                 ) {
                     showAddPenghuluDialog = false
                 }
@@ -1162,7 +1300,7 @@ fun AdminDashboardScreen(
             villages = villages,
             isSaving = isSaving,
             onDismiss = { editingAccount = null },
-            onSave = { newUsername, newPassword, officerName, whatsappNumber, active, newVillage ->
+            onSave = { newUsername, newPassword, officerName, whatsappNumber, active, newVillage, isWaliHakim ->
                 onUpdateStaffAccount(
                     account,
                     newUsername,
@@ -1170,7 +1308,8 @@ fun AdminDashboardScreen(
                     officerName,
                     whatsappNumber,
                     active,
-                    newVillage
+                    newVillage,
+                    isWaliHakim
                 ) {
                     editingAccount = null
                 }
@@ -1227,12 +1366,27 @@ fun AdminDashboardScreen(
             }
         )
     }
+
+    if (showWaliHakimSettingsDialog) {
+        WaliHakimSettingsDialog(
+            penghuluAccounts = staffAccounts.filter { it.resolvedRole() == UserRole.PENGHULU },
+            settings = reminderSettings,
+            isSaving = isSaving,
+            onDismiss = { showWaliHakimSettingsDialog = false },
+            onSave = { authorizedIds, defaultId, defaultName ->
+                onSaveWaliHakimSettings(authorizedIds, defaultId, defaultName) {
+                    showWaliHakimSettingsDialog = false
+                }
+            }
+        )
+    }
 }
 
 @Composable
 private fun StaffAccountAdminCard(
     account: StaffAccount,
     scheduleCount: Int,
+    isDefaultWaliHakim: Boolean = false,
     onEdit: () -> Unit,
     onDelete: (() -> Unit)? = null
 ) {
@@ -1285,7 +1439,15 @@ private fun StaffAccountAdminCard(
                         Text(
                             text = when {
                                 isAdmin -> "Akses Penuh • $scheduleCount total jadwal"
-                                isPenghulu -> "Penghulu KUA Donorojo • $scheduleCount jadwal tugas"
+                                isPenghulu -> buildString {
+                                    append("Penghulu KUA Donorojo")
+                                    if (isDefaultWaliHakim) {
+                                        append(" • Wali Hakim Utama")
+                                    } else if (account.isWaliHakim) {
+                                        append(" • Wali Hakim")
+                                    }
+                                    append(" • $scheduleCount jadwal")
+                                }
                                 else -> "${account.villageName} • $scheduleCount jadwal"
                             },
                             style = MaterialTheme.typography.bodySmall,
