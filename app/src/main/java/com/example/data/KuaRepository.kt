@@ -17,7 +17,7 @@ class KuaRepository(
      * (Admin KUA + Penghulu + 8 Modin Desa), and global Smart Reminder settings in local Room DB.
      */
     suspend fun ensureDefaultDonorojoData() {
-        val now = System.currentTimeMillis()
+        val seedTime = DEFAULT_SEED_TIMESTAMP
 
         if (dao.countVillages() == 0) {
             val villages = DonorojoOfficialDirectory.eightModinPresets.map { preset ->
@@ -26,7 +26,7 @@ class KuaRepository(
                     name = preset.villageName,
                     modinName = preset.defaultOfficerName,
                     modinPhone = "",
-                    updatedAt = now
+                    updatedAt = seedTime
                 )
             }
             dao.upsertVillages(villages)
@@ -50,8 +50,8 @@ class KuaRepository(
                     whatsappNumber = "",
                     googleEmail = "",
                     active = true,
-                    createdAt = now,
-                    updatedAt = now
+                    createdAt = seedTime,
+                    updatedAt = seedTime
                 )
             )
 
@@ -71,8 +71,8 @@ class KuaRepository(
                         whatsappNumber = "",
                         googleEmail = "",
                         active = true,
-                        createdAt = now,
-                        updatedAt = now
+                        createdAt = seedTime,
+                        updatedAt = seedTime
                     )
                 )
             }
@@ -96,8 +96,8 @@ class KuaRepository(
                     googleEmail = "",
                     active = true,
                     isWaliHakim = true,
-                    createdAt = now,
-                    updatedAt = now
+                    createdAt = seedTime,
+                    updatedAt = seedTime
                 )
             }
             dao.insertStaffAccountsIfMissing(penghuluAccounts)
@@ -124,7 +124,7 @@ class KuaRepository(
                     headOfKuaName = "",
                     headOfKuaNip = "",
                     updatedByName = "Admin KUA Donorojo",
-                    updatedAt = now
+                    updatedAt = seedTime
                 )
             )
         } else {
@@ -139,7 +139,7 @@ class KuaRepository(
                         adminWhatsappNumber = adminAccount!!.whatsappNumber.trim(),
                         whatsappPenghuluTemplate = existingSettings.whatsappPenghuluTemplate
                             .ifBlank { ReminderSettings.DEFAULT_WA_PENGHULU_TEMPLATE },
-                        updatedAt = now
+                        updatedAt = System.currentTimeMillis()
                     )
                 )
             }
@@ -250,14 +250,30 @@ class KuaRepository(
         }
     }
 
+    suspend fun pullAllCloudToLocal(uid: String): Result<Int> {
+        val sync = firestoreSync ?: return Result.success(0)
+        return sync.pullAllRemoteDataOnce(uid).map { snapshot ->
+            mergeRemoteVillages(snapshot.villages)
+            mergeRemoteStaffAccounts(snapshot.staffAccounts)
+            mergeRemoteReminderSettings(snapshot.reminderSettings)
+            mergeRemoteSchedules(snapshot.schedules)
+            snapshot.schedules.size
+        }
+    }
+
     suspend fun syncAllLocalToCloud(): Result<Int> {
         val sync = firestoreSync ?: return Result.success(0)
         return sync.syncAllLocalToCloud(
             villages = getAllVillagesOnce(),
             staffAccounts = getAllStaffAccountsOnce(),
             settings = getReminderSettingsOnce(),
-            schedules = getAllSchedulesOnce()
+            schedules = getAllSchedulesOnce(),
+            seedTimestampThreshold = DEFAULT_SEED_TIMESTAMP
         )
+    }
+
+    companion object {
+        const val DEFAULT_SEED_TIMESTAMP = 1L
     }
 
     suspend fun restoreFromBackup(payload: KuaBackupPayload): Result<String> {

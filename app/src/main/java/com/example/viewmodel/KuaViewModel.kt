@@ -84,14 +84,15 @@ class KuaViewModel(
     init {
         viewModelScope.launch {
             repository.ensureDefaultDonorojoData()
-            restoreSavedStaffSessionIfAvailable()
-            onScheduleReminderAlarm(repository.getReminderSettingsOnce())
             val sync = firestoreSync
             if (sync != null) {
-                // Ensure initial cloud profile & workspace mirror are up-to-date
                 sync.upsertUserProfile()
+                // Pull existing cloud records FIRST so fresh-install defaults never overwrite or hide cloud data
+                repository.pullAllCloudToLocal(currentUserId)
+                restoreSavedStaffSessionIfAvailable()
+                onScheduleReminderAlarm(repository.getReminderSettingsOnce())
                 startCloudRealtimeSync(sync)
-                // Perform one initial background push of local data so first-time users immediately sync to cloud
+                // Push local data safely (default untouched seeds will never overwrite existing cloud docs)
                 val syncResult = repository.syncAllLocalToCloud()
                 _cloudSyncStatus.update { current ->
                     syncResult.fold(
@@ -113,6 +114,8 @@ class KuaViewModel(
                     )
                 }
             } else {
+                restoreSavedStaffSessionIfAvailable()
+                onScheduleReminderAlarm(repository.getReminderSettingsOnce())
                 _cloudSyncStatus.update { current ->
                     current.copy(
                         isSyncing = false,
@@ -417,6 +420,7 @@ class KuaViewModel(
         }
         viewModelScope.launch {
             _cloudSyncStatus.update { it.copy(isSyncing = true, errorMessage = null) }
+            repository.pullAllCloudToLocal(currentUserId)
             val result = repository.syncAllLocalToCloud()
             result.fold(
                 onSuccess = { count ->
@@ -429,7 +433,7 @@ class KuaViewModel(
                             errorMessage = null
                         )
                     }
-                    _actionMessage.value = "Sinkronisasi cloud selesai ($count jadwal tersimpan online)."
+                    _actionMessage.value = "Sinkronisasi cloud selesai (data petugas & $count jadwal tersinkronisasi)."
                 },
                 onFailure = { error ->
                     _cloudSyncStatus.update {

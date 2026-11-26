@@ -23,6 +23,13 @@ data class RemoteStaffRecord(
     val account: StaffAccount
 )
 
+data class RemoteWorkspaceSnapshot(
+    val villages: List<Village>,
+    val staffAccounts: List<StaffAccount>,
+    val reminderSettings: ReminderSettings?,
+    val schedules: List<MarriageSchedule>
+)
+
 class KuaFirestoreSyncService(
     private val db: FirebaseFirestore,
     private val auth: FirebaseAuth = Firebase.auth
@@ -186,9 +193,113 @@ class KuaFirestoreSyncService(
                 throw error
             }
 
+    suspend fun pullAllRemoteDataOnce(uid: String): Result<RemoteWorkspaceSnapshot> {
+        if (currentUid() == null) return Result.failure(IllegalStateException("Belum login Google."))
+        val email = currentVerifiedEmailLower()
+        val isBootstrapAdmin = email == BOOTSTRAP_ADMIN_EMAIL
+
+        return try {
+            val villageMap = linkedMapOf<String, Village>()
+            val staffMap = linkedMapOf<String, StaffAccount>()
+            val scheduleMap = linkedMapOf<String, MarriageSchedule>()
+            var latestSettings: ReminderSettings? = null
+
+            fun ingestVillages(docs: List<DocumentSnapshot>) {
+                docs.mapNotNull { parseVillage(it) }.forEach { v ->
+                    val existing = villageMap[v.code]
+                    if (existing == null || v.updatedAt >= existing.updatedAt) {
+                        villageMap[v.code] = v
+                    }
+                }
+            }
+
+            fun ingestStaff(docs: List<DocumentSnapshot>) {
+                docs.mapNotNull { doc ->
+                    parseStaffRecord(doc)?.also { rec ->
+                        remoteStaffDocIdByLocalId[rec.account.id] = rec.docId
+                        remoteStaffOwnerByLocalId[rec.account.id] = rec.ownerUid
+                    }
+                }.forEach { rec ->
+                    val existing = staffMap[rec.account.id]
+                    if (existing == null || rec.account.updatedAt >= existing.updatedAt) {
+                        staffMap[rec.account.id] = rec.account
+                    }
+                }
+            }
+
+            fun ingestSettings(docs: List<DocumentSnapshot>) {
+                docs.map { parseReminderSettings(it) }.forEach { s ->
+                    val current = latestSettings
+                    if (current == null || s.updatedAt >= current.updatedAt) {
+                        latestSettings = s
+                    }
+                }
+            }
+
+            fun ingestSchedules(docs: List<DocumentSnapshot>) {
+                docs.mapNotNull { parseSchedule(it) }.forEach { s ->
+                    val existing = scheduleMap[s.id]
+                    if (existing == null || s.updatedAt >= existing.updatedAt) {
+                        scheduleMap[s.id] = s
+                    }
+                }
+            }
+
+            if (isBootstrapAdmin) {
+                runCatching { db.collection(COL_VILLAGES).get().await().documents }.onSuccess(::ingestVillages)
+                runCatching { db.collection(COL_STAFF).get().await().documents }.onSuccess(::ingestStaff)
+                runCatching { db.collection(COL_SETTINGS).get().await().documents }.onSuccess(::ingestSettings)
+                runCatching { db.collection(COL_SCHEDULES).get().await().documents }.onSuccess(::ingestSchedules)
+            } else {
+                runCatching {
+                    db.collection(COL_VILLAGES).whereEqualTo("createdByUid", uid).get().await().documents
+                }.onSuccess(::ingestVillages)
+                runCatching {
+                    db.collection(COL_STAFF).whereEqualTo("ownerUid", uid).get().await().documents
+                }.onSuccess(::ingestStaff)
+                runCatching {
+                    db.collection(COL_SETTINGS).whereEqualTo("ownerUid", uid).get().await().documents
+                }.onSuccess(::ingestSettings)
+                runCatching {
+                    db.collection(COL_SCHEDULES).whereEqualTo("createdByUid", uid).get().await().documents
+                }.onSuccess(::ingestSchedules)
+
+                if (!email.isNullOrBlank()) {
+                    runCatching {
+                        db.collection(COL_VILLAGES).whereArrayContains("allowedReaderEmails", email).get().await().documents
+                    }.onSuccess(::ingestVillages)
+                    runCatching {
+                        db.collection(COL_STAFF).whereEqualTo("googleEmail", email).get().await().documents
+                    }.onSuccess(::ingestStaff)
+                    runCatching {
+                        db.collection(COL_SETTINGS).whereArrayContains("allowedReaderEmails", email).get().await().documents
+                    }.onSuccess(::ingestSettings)
+                    runCatching {
+                        db.collection(COL_SCHEDULES).whereArrayContains("allowedMemberEmails", email).get().await().documents
+                    }.onSuccess(::ingestSchedules)
+                }
+            }
+
+            Result.success(
+                RemoteWorkspaceSnapshot(
+                    villages = villageMap.values.toList(),
+                    staffAccounts = staffMap.values.toList(),
+                    reminderSettings = latestSettings,
+                    schedules = scheduleMap.values.toList()
+                )
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.LIST, "workspace_pull/$uid")
+            Result.failure(e)
+        }
+    }
+
     suspend fun pushVillage(
         village: Village,
-        allStaff: List<StaffAccount>
+        allStaff: List<StaffAccount>,
+        skipIfExistsOnCloud: Boolean = false
     ): Result<Unit> {
         val uid = currentUid() ?: return Result.failure(IllegalStateException("Belum login Google."))
         val docId = villageDocId(uid, village.code)
@@ -204,6 +315,9 @@ class KuaFirestoreSyncService(
         return try {
             val docRef = db.collection(COL_VILLAGES).document(docId)
             val exists = docRef.get().await().exists()
+            if (exists && skipIfExistsOnCloud) {
+                return Result.success(Unit)
+            }
             if (exists) {
                 val updateMap = mapOf<String, Any?>(
                     "name" to village.name.trim().take(80).ifBlank { "Desa ${village.code}" },
@@ -237,7 +351,10 @@ class KuaFirestoreSyncService(
         }
     }
 
-    suspend fun pushStaffAccount(account: StaffAccount): Result<Unit> {
+    suspend fun pushStaffAccount(
+        account: StaffAccount,
+        skipIfExistsOnCloud: Boolean = false
+    ): Result<Unit> {
         val uid = currentUid() ?: return Result.failure(IllegalStateException("Belum login Google."))
         val docId = staffDocId(uid, account.id)
         val path = "$COL_STAFF/$docId"
@@ -246,6 +363,11 @@ class KuaFirestoreSyncService(
         return try {
             val docRef = db.collection(COL_STAFF).document(docId)
             val exists = docRef.get().await().exists()
+            if (exists && skipIfExistsOnCloud) {
+                remoteStaffDocIdByLocalId[account.id] = docId
+                remoteStaffOwnerByLocalId[account.id] = uid
+                return Result.success(Unit)
+            }
             if (exists) {
                 val updateMap = mapOf<String, Any?>(
                     "username" to account.username.trim().lowercase(Locale.ROOT).take(50),
@@ -345,7 +467,8 @@ class KuaFirestoreSyncService(
 
     suspend fun pushReminderSettings(
         settings: ReminderSettings,
-        allStaff: List<StaffAccount>
+        allStaff: List<StaffAccount>,
+        skipIfExistsOnCloud: Boolean = false
     ): Result<Unit> {
         val uid = currentUid() ?: return Result.failure(IllegalStateException("Belum login Google."))
         val docId = settingsDocId(uid)
@@ -360,6 +483,9 @@ class KuaFirestoreSyncService(
         return try {
             val docRef = db.collection(COL_SETTINGS).document(docId)
             val exists = docRef.get().await().exists()
+            if (exists && skipIfExistsOnCloud) {
+                return Result.success(Unit)
+            }
             val commonFields = mapOf<String, Any?>(
                 "autoPhoneNotifEnabled" to settings.autoPhoneNotifEnabled,
                 "whatsappReminderEnabled" to settings.whatsappReminderEnabled,
@@ -533,7 +659,8 @@ class KuaFirestoreSyncService(
         villages: List<Village>,
         staffAccounts: List<StaffAccount>,
         settings: ReminderSettings,
-        schedules: List<MarriageSchedule>
+        schedules: List<MarriageSchedule>,
+        seedTimestampThreshold: Long = 1L
     ): Result<Int> {
         if (currentUid() == null) return Result.failure(IllegalStateException("Belum login Google."))
         var failure: Throwable? = null
@@ -541,14 +668,25 @@ class KuaFirestoreSyncService(
 
         val villagesByCode = villages.associateBy { it.code }
         villages.forEach { v ->
-            val r = pushVillage(v, staffAccounts)
+            val r = pushVillage(
+                village = v,
+                allStaff = staffAccounts,
+                skipIfExistsOnCloud = v.updatedAt <= seedTimestampThreshold
+            )
             if (r.isFailure && failure == null) failure = r.exceptionOrNull()
         }
         staffAccounts.forEach { account ->
-            val r = pushStaffAccount(account)
+            val r = pushStaffAccount(
+                account = account,
+                skipIfExistsOnCloud = account.updatedAt <= seedTimestampThreshold
+            )
             if (r.isFailure && failure == null) failure = r.exceptionOrNull()
         }
-        val settingsResult = pushReminderSettings(settings, staffAccounts)
+        val settingsResult = pushReminderSettings(
+            settings = settings,
+            allStaff = staffAccounts,
+            skipIfExistsOnCloud = settings.updatedAt <= seedTimestampThreshold
+        )
         if (settingsResult.isFailure && failure == null) failure = settingsResult.exceptionOrNull()
 
         var pushedSchedules = 0
@@ -709,6 +847,7 @@ class KuaFirestoreSyncService(
     }
 
     private companion object {
+        const val BOOTSTRAP_ADMIN_EMAIL = "minhashaf02@gmail.com"
         const val COL_USERS = "users"
         const val COL_VILLAGES = "villages"
         const val COL_STAFF = "staff_accounts"
