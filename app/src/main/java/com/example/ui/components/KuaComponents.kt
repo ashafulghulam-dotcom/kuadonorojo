@@ -118,25 +118,12 @@ fun OfficialKuaLogoBadge(
     sizeDp: Int = 48,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        modifier = modifier.size(sizeDp.dp),
-        shape = RoundedCornerShape(14.dp),
-        color = Color.White,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        shadowElevation = 1.dp
-    ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.padding(5.dp)
-        ) {
-            Image(
-                painter = painterResource(id = R.drawable.ic_logo_kua_resmi),
-                contentDescription = stringResource(R.string.cd_app_emblem),
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.size((sizeDp - 10).dp)
-            )
-        }
-    }
+    Image(
+        painter = painterResource(id = R.drawable.ic_logo_kua_resmi),
+        contentDescription = stringResource(R.string.cd_app_emblem),
+        contentScale = ContentScale.Fit,
+        modifier = modifier.size(sizeDp.dp)
+    )
 }
 
 @Composable

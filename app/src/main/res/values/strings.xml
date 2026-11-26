@@ -22,4 +22,6 @@
     <string name="cd_search_clear">Hapus pencarian</string>
     <string name="cd_copy_email">Salin alamat email</string>
     <string name="cd_toggle_password">Tampilkan atau sembunyikan password</string>
+    <string name="cd_social_instagram">Buka Instagram resmi KUA Donorojo</string>
+    <string name="cd_social_tiktok">Buka TikTok resmi KUA Donorojo</string>
 </resources>

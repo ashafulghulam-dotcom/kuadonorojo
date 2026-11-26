@@ -13,6 +13,7 @@ import com.example.data.UserRole
 import com.example.data.ValidationStatus
 import com.example.data.Village
 import com.example.util.PasswordHasher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -45,9 +46,16 @@ class KuaViewModel(
     private val _isSaving = MutableStateFlow(false)
     val isSaving: StateFlow<Boolean> = _isSaving.asStateFlow()
 
+    private val _showSplash = MutableStateFlow(true)
+    val showSplash: StateFlow<Boolean> = _showSplash.asStateFlow()
+
     init {
         viewModelScope.launch {
             repository.ensureDefaultDonorojoData()
+        }
+        viewModelScope.launch {
+            delay(SPLASH_DURATION_MILLIS)
+            _showSplash.value = false
         }
     }
 
@@ -348,5 +356,6 @@ class KuaViewModel(
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5000L
+        const val SPLASH_DURATION_MILLIS = 1100L
     }
 }
