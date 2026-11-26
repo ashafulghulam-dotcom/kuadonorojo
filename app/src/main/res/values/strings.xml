@@ -45,4 +45,11 @@
     <string name="action_share_wa_group">Kirim WA Grup</string>
     <string name="action_copy_wa_text">Salin Teks</string>
     <string name="cd_preview_wa_digest">Pratinjau teks rekap WhatsApp</string>
+    <string name="penghulu_chart_title">Grafik Rekap Nikah Bulanan</string>
+    <string name="penghulu_chart_subtitle">Perbandingan akad Balai KUA &amp; Luar KUA per penghulu setiap bulan</string>
+    <string name="penghulu_chart_balai_kua">Balai KUA</string>
+    <string name="penghulu_chart_luar_kua">Luar KUA</string>
+    <string name="penghulu_chart_all_penghulu">Semua Penghulu</string>
+    <string name="cd_chart_prev_year">Tahun grafik sebelumnya</string>
+    <string name="cd_chart_next_year">Tahun grafik berikutnya</string>
 </resources>

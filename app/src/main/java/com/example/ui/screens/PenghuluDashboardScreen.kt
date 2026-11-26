@@ -79,6 +79,7 @@ import com.example.ui.components.ErrorStateCard
 import com.example.ui.components.KpiSummaryStrip
 import com.example.ui.components.KuaHeroHeader
 import com.example.ui.components.MonthlyCalendarSection
+import com.example.ui.components.PenghuluMonthlyRecapChartCard
 import com.example.ui.components.ScheduleCard
 import com.example.ui.components.ScheduleDetailSheet
 import com.example.ui.components.SearchAndStatusFilterBar
@@ -607,6 +608,14 @@ fun PenghuluDashboardScreen(
                             totalCount = activeScopeSchedules.size,
                             pendingCount = pendingCount,
                             verifiedCount = verifiedCount
+                        )
+                    }
+
+                    item(key = "penghulu_monthly_recap_chart") {
+                        PenghuluMonthlyRecapChartCard(
+                            allSchedules = allSchedules,
+                            penghuluAccounts = penghuluAccounts,
+                            defaultPenghuluId = targetPenghulu?.id
                         )
                     }
 

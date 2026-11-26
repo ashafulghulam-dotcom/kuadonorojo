@@ -115,6 +115,7 @@ import com.example.ui.components.ErrorStateCard
 import com.example.ui.components.KpiSummaryStrip
 import com.example.ui.components.KuaHeroHeader
 import com.example.ui.components.MonthlyCalendarSection
+import com.example.ui.components.PenghuluMonthlyRecapChartCard
 import com.example.ui.components.RecapAnalyticsSection
 import com.example.ui.components.ScheduleCard
 import com.example.ui.components.ScheduleDetailSheet
@@ -741,6 +742,17 @@ fun AdminDashboardScreen(
                                     )
                                 }
                             } else if (scheduleViewMode == AdminScheduleViewMode.ANALYTICS) {
+                                item(key = "admin_penghulu_monthly_recap_chart") {
+                                    val adminPenghuluList = remember(staffAccounts) {
+                                        staffAccounts.filter { it.resolvedRole() == UserRole.PENGHULU }
+                                    }
+                                    PenghuluMonthlyRecapChartCard(
+                                        allSchedules = schedules,
+                                        penghuluAccounts = adminPenghuluList,
+                                        defaultPenghuluId = null,
+                                        defaultToAllPenghulu = true
+                                    )
+                                }
                                 item(key = "admin_recap_analytics") {
                                     RecapAnalyticsSection(
                                         villages = villages,
