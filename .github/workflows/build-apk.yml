@@ -60,31 +60,69 @@ jobs:
           gradle-version: '9.3.1'
 
       - name: Create temporary debug keystore
+        env:
+          DEBUG_KEYSTORE_BASE64_SECRET: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         shell: bash
         run: |
           set -euo pipefail
           KEYSTORE_PATH="./debug.keystore"
           if [ ! -f "$KEYSTORE_PATH" ]; then
-            KEYTOOL_BIN="keytool"
-            if [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME}/bin/keytool" ]; then
-              KEYTOOL_BIN="${JAVA_HOME}/bin/keytool"
+            if [ -n "${DEBUG_KEYSTORE_BASE64_SECRET:-}" ]; then
+              printf '%s' "$DEBUG_KEYSTORE_BASE64_SECRET" | tr -d '\r\n ' | base64 -d > "$KEYSTORE_PATH"
+              echo "Decoded debug keystore from GitHub Secret."
+            elif [ -f "./debug.keystore.base64" ] && [ -s "./debug.keystore.base64" ]; then
+              tr -d '\r\n ' < "./debug.keystore.base64" | base64 -d > "$KEYSTORE_PATH"
+              echo "Decoded project debug keystore from debug.keystore.base64."
+            else
+              KEYTOOL_BIN="keytool"
+              if [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME}/bin/keytool" ]; then
+                KEYTOOL_BIN="${JAVA_HOME}/bin/keytool"
+              fi
+              "$KEYTOOL_BIN" -genkeypair \
+                -keystore "$KEYSTORE_PATH" \
+                -storepass android \
+                -alias androiddebugkey \
+                -keypass android \
+                -dname "CN=Android Debug,O=Android,C=US" \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -noprompt >/dev/null
+              echo "Generated temporary debug keystore with keytool."
             fi
-            "$KEYTOOL_BIN" -genkeypair \
-              -keystore "$KEYSTORE_PATH" \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -dname "CN=Android Debug,O=Android,C=US" \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -noprompt >/dev/null
           fi
           if [ ! -f "$KEYSTORE_PATH" ] || [ ! -s "$KEYSTORE_PATH" ]; then
-            echo "::error::Failed to create temporary debug keystore at ${KEYSTORE_PATH}."
+            echo "::error::Failed to prepare debug keystore at ${KEYSTORE_PATH}."
             exit 1
           fi
-          echo "Temporary debug keystore is ready."
+          echo "Debug keystore is ready."
+
+      - name: Configure Firebase google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET_PATH="app/google-services.json"
+          if [ -n "${GOOGLE_SERVICES_JSON:-}" ]; then
+            python3 - <<'PYEOF'
+          import base64, json, os, sys
+          raw = os.environ.get("GOOGLE_SERVICES_JSON", "").strip()
+          if raw.startswith("{"):
+              text = raw
+          else:
+              cleaned = "".join(raw.split())
+              text = base64.b64decode(cleaned).decode("utf-8")
+          json.loads(text)
+          with open("app/google-services.json", "w", encoding="utf-8") as f:
+              f.write(text)
+          PYEOF
+            echo "Firebase app/google-services.json configured from GitHub Secret (Cloud Sync enabled)."
+          elif [ -f "$TARGET_PATH" ] && [ -s "$TARGET_PATH" ]; then
+            echo "Using existing app/google-services.json from repository."
+          else
+            echo "::notice::GitHub Secret GOOGLE_SERVICES_JSON is not set; APK will build in local offline-ready mode."
+          fi
 
       - name: Build debug APK
         id: build_apk

@@ -84,7 +84,6 @@ import com.example.ui.components.ScheduleDetailSheet
 import com.example.ui.components.SearchAndStatusFilterBar
 import com.example.ui.components.SelfProfileSettingsSection
 import com.example.ui.components.TodayWeddingsSpotlightSection
-import com.example.ui.components.WaDigestQuickCard
 import com.example.util.DeviceCalendarSyncManager
 import com.example.util.SmartReminderManager
 import kotlinx.coroutines.launch
@@ -417,27 +416,6 @@ fun ModinDashboardScreen(
                                 accountId = targetModin?.id ?: activeAccount.id,
                                 roleLabel = "Modin Desa",
                                 schedulesToSync = myAssignedSchedules,
-                                onFeedback = { message ->
-                                    scope.launch { snackbarHostState.showSnackbar(message) }
-                                }
-                            )
-                        }
-
-                        // 1-click WA Group Digest share/copy for Modin
-                        item(key = "modin_wa_digest_card") {
-                            val resolvedAdminWa = remember(reminderSettings, allAccounts) {
-                                SmartReminderManager.resolveAdminWhatsappNumber(reminderSettings, allAccounts)
-                            }
-                            val digestScope = if (targetModin?.villageName?.isNotBlank() == true) {
-                                "$activeModinDisplay (${targetModin.villageName})"
-                            } else {
-                                activeModinDisplay
-                            }
-                            WaDigestQuickCard(
-                                schedules = myAssignedSchedules,
-                                scopeLabel = digestScope,
-                                adminWhatsappNumber = resolvedAdminWa,
-                                appPreference = reminderSettings.resolvedAdminWhatsappApp(),
                                 onFeedback = { message ->
                                     scope.launch { snackbarHostState.showSnackbar(message) }
                                 }
