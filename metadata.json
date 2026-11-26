@@ -1,0 +1,6 @@
+{
+  "name": "KUA Donorojo",
+  "description": "Aplikasi jadwal nikah KUA Donorojo dengan dasbor Admin KUA dan pemantauan validasi real-time untuk Modin per desa.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

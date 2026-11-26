@@ -1,0 +1,158 @@
+{
+  "entities": {
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Trusted KUA Donorojo administrator registry record.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID of the KUA administrator." },
+        "email": { "type": "string", "description": "Verified Google email of the KUA administrator." },
+        "displayName": { "type": "string", "description": "Full display name of the KUA administrator." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["uid", "email", "displayName", "createdAt", "updatedAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated Google session profile.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID matching document ID." },
+        "email": { "type": "string", "description": "Lowercased Google account email." },
+        "displayName": { "type": "string", "description": "Display name of the officer." },
+        "role": { "type": "string", "enum": ["ADMIN", "MODIN"], "description": "Role of the signed-in Google account." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["userId", "email", "displayName", "role", "createdAt", "updatedAt"]
+    },
+    "StaffAccount": {
+      "title": "StaffAccount",
+      "description": "Username and hashed password credentials for Admin KUA Donorojo and 8 Modin Desa, managed by Admin KUA.",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string", "description": "Unique lowercase login username (e.g., adminkua, modin.blingoh)." },
+        "passwordHash": { "type": "string", "description": "SHA-256 salted password digest." },
+        "passwordSalt": { "type": "string", "description": "Per-account salt for password verification." },
+        "role": { "type": "string", "enum": ["ADMIN", "MODIN"], "description": "Dashboard role granted upon login." },
+        "villageId": { "type": "string", "description": "Assigned village slug ID for Modin accounts, empty for Admin." },
+        "villageName": { "type": "string", "description": "Display name of the assigned village (e.g., Desa Blingoh)." },
+        "officerName": { "type": "string", "description": "Full name of the officer or Modin." },
+        "whatsappNumber": { "type": "string", "description": "WhatsApp phone number for Smart Reminder." },
+        "googleEmail": { "type": "string", "description": "Optional lowercased Google email for cross-device Modin sync." },
+        "active": { "type": "boolean", "description": "Whether this login account is currently active." },
+        "ownerUid": { "type": "string", "description": "Firebase Auth UID of the KUA workspace owner." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": [
+        "username", "passwordHash", "passwordSalt", "role", "villageId", "villageName",
+        "officerName", "whatsappNumber", "googleEmail", "active", "ownerUid", "createdAt", "updatedAt"
+      ]
+    },
+    "ReminderSettings": {
+      "title": "ReminderSettings",
+      "description": "Smart Reminder configuration for automatic phone notifications and WhatsApp reminders managed by Admin KUA.",
+      "type": "object",
+      "properties": {
+        "autoPhoneNotifEnabled": { "type": "boolean", "description": "Enable automatic phone notifications for Modin on wedding days." },
+        "whatsappReminderEnabled": { "type": "boolean", "description": "Enable WhatsApp Smart Reminder workflow in Admin KUA." },
+        "remindOnWeddingDay": { "type": "boolean", "description": "Send reminder on H-0 (wedding day)." },
+        "remindOneDayBefore": { "type": "boolean", "description": "Send reminder on H-1 before wedding day." },
+        "remindThreeDaysBefore": { "type": "boolean", "description": "Send reminder on H-3 before wedding day." },
+        "reminderTime": { "type": "string", "description": "Preferred daily reminder time in HH:mm WIB format." },
+        "whatsappTemplate": { "type": "string", "description": "Customizable WhatsApp message template with placeholders." },
+        "updatedByName": { "type": "string", "description": "Name of Admin KUA who last updated settings." },
+        "allowedReaderEmails": { "type": "array", "description": "Bounded list (max 20) of authorized Modin emails for read sync." },
+        "ownerUid": { "type": "string", "description": "Firebase Auth UID of the KUA workspace owner." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": [
+        "autoPhoneNotifEnabled", "whatsappReminderEnabled", "remindOnWeddingDay",
+        "remindOneDayBefore", "remindThreeDaysBefore", "reminderTime",
+        "whatsappTemplate", "updatedByName", "allowedReaderEmails", "ownerUid", "createdAt", "updatedAt"
+      ]
+    },
+    "Village": {
+      "title": "Village",
+      "description": "One of the 8 official villages in Donorojo with assigned Modin info.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Official village name (e.g., Desa Bandungharjo)." },
+        "code": { "type": "string", "description": "Normalized village slug code matching document ID." },
+        "modinName": { "type": "string", "description": "Assigned Modin full name." },
+        "modinEmail": { "type": "string", "description": "Optional lowercased Google email of the Modin." },
+        "modinPhone": { "type": "string", "description": "WhatsApp/phone number of the Modin." },
+        "createdByUid": { "type": "string", "description": "UID of the Admin KUA who created the village entry." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["name", "code", "modinName", "modinEmail", "createdByUid", "createdAt", "updatedAt"]
+    },
+    "MarriageSchedule": {
+      "title": "MarriageSchedule",
+      "description": "Marriage registration and akad nikah schedule managed by Admin KUA Donorojo and monitored in real-time by village Modin.",
+      "type": "object",
+      "properties": {
+        "registrationNumber": { "type": "string", "description": "Official KUA Donorojo registration number." },
+        "groomName": { "type": "string", "description": "Full name of the prospective groom." },
+        "groomNik": { "type": "string", "description": "Optional NIK of the prospective groom." },
+        "brideName": { "type": "string", "description": "Full name of the prospective bride." },
+        "brideNik": { "type": "string", "description": "Optional NIK of the prospective bride." },
+        "villageId": { "type": "string", "description": "Document ID of the village in /villages/{villageId}." },
+        "villageName": { "type": "string", "description": "Display name of the village." },
+        "weddingDate": { "type": "string", "description": "Scheduled akad date in ISO YYYY-MM-DD format." },
+        "weddingTime": { "type": "string", "description": "Scheduled akad time in HH:mm 24-hour WIB format." },
+        "locationType": { "type": "string", "enum": ["KUA", "LUAR_KUA"], "description": "Balai Nikah KUA or outside KUA." },
+        "locationAddress": { "type": "string", "description": "Full venue address for the akad nikah." },
+        "penghuluName": { "type": "string", "description": "Assigned Penghulu KUA name." },
+        "validationStatus": {
+          "type": "string",
+          "enum": ["MENUNGGU", "VERIFIKASI_BERKAS", "PERLU_REVISI", "TERVERIFIKASI", "SELESAI", "DIBATALKAN"],
+          "description": "Final validation status set exclusively by Admin KUA."
+        },
+        "documentsComplete": { "type": "boolean", "description": "Whether required N1-N4 documents are complete." },
+        "verificationNote": { "type": "string", "description": "Official verification note from Admin KUA." },
+        "verifiedByName": { "type": "string", "description": "Name of Admin KUA officer who performed verification." },
+        "allowedModinEmails": { "type": "array", "description": "Denormalized bounded list (max 10) of Modin emails." },
+        "createdByUid": { "type": "string", "description": "UID of the Admin KUA who created the record." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": [
+        "registrationNumber", "groomName", "brideName", "villageId", "villageName",
+        "weddingDate", "weddingTime", "locationType", "locationAddress", "penghuluName",
+        "validationStatus", "documentsComplete", "verificationNote",
+        "allowedModinEmails", "createdByUid", "createdAt", "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Registry of verified KUA Donorojo administrators."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles keyed by Firebase Auth UID."
+    },
+    "/staff_accounts/{accountId}": {
+      "schema": { "$ref": "#/entities/StaffAccount" },
+      "description": "Username/password credentials for Admin KUA and 8 Modin Desa."
+    },
+    "/reminder_settings/{settingId}": {
+      "schema": { "$ref": "#/entities/ReminderSettings" },
+      "description": "Smart Reminder settings for phone notifications and WhatsApp."
+    },
+    "/villages/{villageId}": {
+      "schema": { "$ref": "#/entities/Village" },
+      "description": "8 official villages in Donorojo and their assigned Modin contacts."
+    },
+    "/marriage_schedules/{scheduleId}": {
+      "schema": { "$ref": "#/entities/MarriageSchedule" },
+      "description": "Marriage registrations and akad schedules managed by Admin KUA and monitored read-only by village Modin."
+    }
+  }
+}

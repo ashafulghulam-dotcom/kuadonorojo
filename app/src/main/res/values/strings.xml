@@ -1,0 +1,25 @@
+<resources>
+    <string name="app_name">KUA Donorojo</string>
+    <string name="app_subtitle">Sistem Jadwal Nikah &amp; Validasi Real-Time</string>
+    <string name="auth_welcome_title">KUA Donorojo</string>
+    <string name="auth_welcome_subtitle">Layanan terpadu penjadwalan akad nikah dan pemantauan status validasi berkas secara real-time.</string>
+    <string name="auth_sign_in_google">Hubungkan dengan Google</string>
+    <string name="auth_role_admin_title">Dasbor Admin KUA Donorojo</string>
+    <string name="auth_role_admin_desc">Akses penuh input pendaftaran, verifikasi akhir, pengaturan akun 8 Modin, serta Smart Reminder HP &amp; WA.</string>
+    <string name="auth_role_modin_title">Dasbor Modin Donorojo (8 Desa)</string>
+    <string name="auth_role_modin_desc">Pantau jadwal pengantin hari H, status validasi wilayah desa secara real-time, dan notifikasi HP otomatis.</string>
+    <string name="status_realtime_badge">Tersinkron Real-Time</string>
+    <string name="action_sign_out">Keluar</string>
+    <string name="action_add_schedule">Daftar Nikah</string>
+    <string name="action_verify_now">Verifikasi</string>
+    <string name="action_edit">Ubah</string>
+    <string name="action_delete">Hapus</string>
+    <string name="action_save">Simpan</string>
+    <string name="action_cancel">Batal</string>
+    <string name="cd_app_emblem">Logo Resmi KUA Donorojo</string>
+    <string name="cd_header_banner">Latar geometris KUA Donorojo</string>
+    <string name="cd_sign_out">Keluar dari akun</string>
+    <string name="cd_search_clear">Hapus pencarian</string>
+    <string name="cd_copy_email">Salin alamat email</string>
+    <string name="cd_toggle_password">Tampilkan atau sembunyikan password</string>
+</resources>

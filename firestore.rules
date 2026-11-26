@@ -1,0 +1,383 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL HARDENED HELPERS ---
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function hasVerifiedEmail() {
+      return isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email is string;
+    }
+
+    function isBootstrappedAdmin() {
+      return hasVerifiedEmail() &&
+        request.auth.token.email.lower() == 'minhashaf02@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() ||
+        (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    // --- ENTITY VALIDATION BLUEPRINTS (ANTI-UPDATE-GAP) ---
+
+    function isValidAdminRecord(data) {
+      return data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 150 &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+        data.createdAt is timestamp && data.createdAt <= request.time &&
+        data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 150 &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+        data.role in ['ADMIN', 'MODIN'] &&
+        data.createdAt is timestamp && data.createdAt <= request.time &&
+        data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidStaffAccount(data) {
+      return data.username is string && data.username.size() >= 3 && data.username.size() <= 50 &&
+        data.username.matches('^[a-z0-9._\\-]+$') &&
+        data.passwordHash is string && data.passwordHash.size() == 64 &&
+        data.passwordSalt is string && data.passwordSalt.size() >= 8 && data.passwordSalt.size() <= 64 &&
+        data.role in ['ADMIN', 'MODIN'] &&
+        data.villageId is string && data.villageId.size() <= 64 &&
+        data.villageName is string && data.villageName.size() <= 80 &&
+        data.officerName is string && data.officerName.size() >= 2 && data.officerName.size() <= 100 &&
+        data.whatsappNumber is string && data.whatsappNumber.size() <= 30 &&
+        data.googleEmail is string && data.googleEmail.size() <= 150 &&
+        data.active is bool &&
+        data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 &&
+        data.createdAt is timestamp && data.createdAt <= request.time &&
+        data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidReminderSettings(data) {
+      return data.autoPhoneNotifEnabled is bool &&
+        data.whatsappReminderEnabled is bool &&
+        data.remindOnWeddingDay is bool &&
+        data.remindOneDayBefore is bool &&
+        data.remindThreeDaysBefore is bool &&
+        data.reminderTime is string && data.reminderTime.size() == 5 &&
+        data.reminderTime.matches('^[0-9]{2}:[0-9]{2}$') &&
+        data.whatsappTemplate is string && data.whatsappTemplate.size() >= 5 && data.whatsappTemplate.size() <= 800 &&
+        data.updatedByName is string && data.updatedByName.size() <= 100 &&
+        data.allowedReaderEmails is list && data.allowedReaderEmails.size() <= 20 &&
+        (data.allowedReaderEmails.size() == 0 || (data.allowedReaderEmails[0] is string && data.allowedReaderEmails[0].size() <= 150)) &&
+        data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 &&
+        data.createdAt is timestamp && data.createdAt <= request.time &&
+        data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidVillage(data) {
+      return data.name is string && data.name.size() >= 2 && data.name.size() <= 80 &&
+        data.code is string && data.code.size() >= 2 && data.code.size() <= 64 &&
+        data.code.matches('^[a-z0-9_\\-]+$') &&
+        data.modinName is string && data.modinName.size() <= 100 &&
+        data.modinEmail is string && data.modinEmail.size() <= 150 &&
+        (!('modinPhone' in data) || (data.modinPhone is string && data.modinPhone.size() <= 30)) &&
+        data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128 &&
+        data.createdAt is timestamp && data.createdAt <= request.time &&
+        data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidSchedule(data) {
+      return data.registrationNumber is string && data.registrationNumber.size() >= 3 && data.registrationNumber.size() <= 40 &&
+        data.groomName is string && data.groomName.size() >= 2 && data.groomName.size() <= 100 &&
+        (!('groomNik' in data) || (data.groomNik is string && data.groomNik.size() <= 20)) &&
+        data.brideName is string && data.brideName.size() >= 2 && data.brideName.size() <= 100 &&
+        (!('brideNik' in data) || (data.brideNik is string && data.brideNik.size() <= 20)) &&
+        isValidId(data.villageId) &&
+        data.villageName is string && data.villageName.size() >= 2 && data.villageName.size() <= 80 &&
+        data.weddingDate is string && data.weddingDate.size() == 10 &&
+        data.weddingDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+        data.weddingTime is string && data.weddingTime.size() == 5 &&
+        data.weddingTime.matches('^[0-9]{2}:[0-9]{2}$') &&
+        data.locationType in ['KUA', 'LUAR_KUA'] &&
+        data.locationAddress is string && data.locationAddress.size() >= 2 && data.locationAddress.size() <= 250 &&
+        data.penghuluName is string && data.penghuluName.size() <= 100 &&
+        data.validationStatus in ['MENUNGGU', 'VERIFIKASI_BERKAS', 'PERLU_REVISI', 'TERVERIFIKASI', 'SELESAI', 'DIBATALKAN'] &&
+        data.documentsComplete is bool &&
+        data.verificationNote is string && data.verificationNote.size() <= 500 &&
+        (!('verifiedByName' in data) || (data.verifiedByName is string && data.verifiedByName.size() <= 100)) &&
+        data.allowedModinEmails is list && data.allowedModinEmails.size() <= 10 &&
+        (data.allowedModinEmails.size() == 0 || (data.allowedModinEmails[0] is string && data.allowedModinEmails[0].size() <= 150)) &&
+        data.createdByUid is string && data.createdByUid.size() >= 1 && data.createdByUid.size() <= 128 &&
+        data.createdAt is timestamp && data.createdAt <= request.time &&
+        data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    // --- COLLECTION 1: /admins/{adminUid} ---
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && isValidId(adminUid) &&
+        (request.auth.uid == adminUid || isBootstrappedAdmin());
+
+      allow list: if isBootstrappedAdmin();
+
+      allow create: if isBootstrappedAdmin() &&
+        isValidId(adminUid) &&
+        isValidAdminRecord(incoming()) &&
+        incoming().uid == adminUid &&
+        incoming().keys().hasAll(['uid', 'email', 'displayName', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['uid', 'email', 'displayName', 'createdAt', 'updatedAt']);
+
+      allow update: if isBootstrappedAdmin() &&
+        isValidId(adminUid) &&
+        isValidAdminRecord(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['email', 'displayName', 'updatedAt']);
+
+      allow delete: if isBootstrappedAdmin() && isValidId(adminUid);
+    }
+
+    // --- COLLECTION 2: /users/{userId} ---
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) &&
+        (request.auth.uid == userId || isAdmin());
+
+      allow list: if isBootstrappedAdmin();
+
+      allow create: if isSignedIn() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().keys().hasAll(['userId', 'email', 'displayName', 'role', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['userId', 'email', 'displayName', 'role', 'createdAt', 'updatedAt']) &&
+        request.auth.uid == userId &&
+        incoming().userId == request.auth.uid &&
+        (incoming().role == 'MODIN' || (incoming().role == 'ADMIN' && isAdmin()));
+
+      allow update: if isSignedIn() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt && (
+          (request.auth.uid == userId &&
+            incoming().role == existing().role &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'updatedAt'])) ||
+          (isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'role', 'updatedAt']))
+        );
+
+      allow delete: if isSignedIn() && isValidId(userId) && isAdmin();
+    }
+
+    // --- COLLECTION 3: /staff_accounts/{accountId} ---
+    match /staff_accounts/{accountId} {
+      allow get: if isSignedIn() && isValidId(accountId) && (
+        isAdmin() ||
+        resource.data.ownerUid == request.auth.uid ||
+        (hasVerifiedEmail() &&
+          resource.data.googleEmail != '' &&
+          resource.data.googleEmail == request.auth.token.email.lower())
+      );
+
+      allow list: if isSignedIn() && (
+        isBootstrappedAdmin() ||
+        resource.data.ownerUid == request.auth.uid ||
+        (hasVerifiedEmail() &&
+          resource.data.googleEmail != '' &&
+          resource.data.googleEmail == request.auth.token.email.lower())
+      );
+
+      allow create: if isSignedIn() &&
+        isValidId(accountId) &&
+        isValidStaffAccount(incoming()) &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().keys().hasAll([
+          'username', 'passwordHash', 'passwordSalt', 'role', 'villageId', 'villageName',
+          'officerName', 'whatsappNumber', 'googleEmail', 'active', 'ownerUid', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'username', 'passwordHash', 'passwordSalt', 'role', 'villageId', 'villageName',
+          'officerName', 'whatsappNumber', 'googleEmail', 'active', 'ownerUid', 'createdAt', 'updatedAt'
+        ]) &&
+        isAdmin();
+
+      allow update: if isSignedIn() &&
+        isValidId(accountId) &&
+        isValidStaffAccount(incoming()) &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().role == existing().role &&
+        incoming().villageId == existing().villageId &&
+        isAdmin() &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'username', 'passwordHash', 'passwordSalt', 'officerName',
+          'whatsappNumber', 'googleEmail', 'active', 'villageName', 'updatedAt'
+        ]);
+
+      allow delete: if isSignedIn() && isValidId(accountId) && isAdmin();
+    }
+
+    // --- COLLECTION 4: /reminder_settings/{settingId} ---
+    match /reminder_settings/{settingId} {
+      allow get: if isSignedIn() && isValidId(settingId) && (
+        isAdmin() ||
+        resource.data.ownerUid == request.auth.uid ||
+        (hasVerifiedEmail() &&
+          request.auth.token.email.lower() in resource.data.allowedReaderEmails)
+      );
+
+      allow list: if isSignedIn() && (
+        isBootstrappedAdmin() ||
+        resource.data.ownerUid == request.auth.uid ||
+        (hasVerifiedEmail() &&
+          request.auth.token.email.lower() in resource.data.allowedReaderEmails)
+      );
+
+      allow create: if isSignedIn() &&
+        isValidId(settingId) &&
+        isValidReminderSettings(incoming()) &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().keys().hasAll([
+          'autoPhoneNotifEnabled', 'whatsappReminderEnabled', 'remindOnWeddingDay',
+          'remindOneDayBefore', 'remindThreeDaysBefore', 'reminderTime',
+          'whatsappTemplate', 'updatedByName', 'allowedReaderEmails', 'ownerUid', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'autoPhoneNotifEnabled', 'whatsappReminderEnabled', 'remindOnWeddingDay',
+          'remindOneDayBefore', 'remindThreeDaysBefore', 'reminderTime',
+          'whatsappTemplate', 'updatedByName', 'allowedReaderEmails', 'ownerUid', 'createdAt', 'updatedAt'
+        ]) &&
+        isAdmin();
+
+      allow update: if isSignedIn() &&
+        isValidId(settingId) &&
+        isValidReminderSettings(incoming()) &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().createdAt == existing().createdAt &&
+        isAdmin() &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'autoPhoneNotifEnabled', 'whatsappReminderEnabled', 'remindOnWeddingDay',
+          'remindOneDayBefore', 'remindThreeDaysBefore', 'reminderTime',
+          'whatsappTemplate', 'updatedByName', 'allowedReaderEmails', 'updatedAt'
+        ]);
+
+      allow delete: if isSignedIn() && isValidId(settingId) && isAdmin();
+    }
+
+    // --- COLLECTION 5: /villages/{villageId} ---
+    match /villages/{villageId} {
+      allow get: if isSignedIn() && isValidId(villageId) && (
+        isAdmin() ||
+        (hasVerifiedEmail() &&
+          resource.data.modinEmail != '' &&
+          resource.data.modinEmail == request.auth.token.email.lower())
+      );
+
+      allow list: if isSignedIn() && (
+        isBootstrappedAdmin() ||
+        resource.data.createdByUid == request.auth.uid ||
+        (hasVerifiedEmail() &&
+          resource.data.modinEmail != '' &&
+          resource.data.modinEmail == request.auth.token.email.lower())
+      );
+
+      allow create: if isSignedIn() &&
+        isValidId(villageId) &&
+        isValidVillage(incoming()) &&
+        incoming().code == villageId &&
+        incoming().createdByUid == request.auth.uid &&
+        incoming().keys().hasAll(['name', 'code', 'modinName', 'modinEmail', 'createdByUid', 'createdAt', 'updatedAt']) &&
+        incoming().keys().hasOnly(['name', 'code', 'modinName', 'modinEmail', 'modinPhone', 'createdByUid', 'createdAt', 'updatedAt']) &&
+        isAdmin();
+
+      allow update: if isSignedIn() &&
+        isValidId(villageId) &&
+        isValidVillage(incoming()) &&
+        incoming().createdByUid == existing().createdByUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().code == existing().code &&
+        isAdmin() && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['modinName', 'modinEmail', 'modinPhone', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'modinName', 'modinEmail', 'modinPhone', 'updatedAt'])
+        );
+
+      allow delete: if isSignedIn() && isValidId(villageId) && isAdmin();
+    }
+
+    // --- COLLECTION 6: /marriage_schedules/{scheduleId} ---
+    match /marriage_schedules/{scheduleId} {
+      allow get: if isSignedIn() && isValidId(scheduleId) && (
+        isAdmin() ||
+        (hasVerifiedEmail() &&
+          request.auth.token.email.lower() in resource.data.allowedModinEmails)
+      );
+
+      allow list: if isSignedIn() && (
+        isBootstrappedAdmin() ||
+        resource.data.createdByUid == request.auth.uid ||
+        (hasVerifiedEmail() &&
+          request.auth.token.email.lower() in resource.data.allowedModinEmails)
+      );
+
+      allow create: if isSignedIn() &&
+        isValidId(scheduleId) &&
+        isValidSchedule(incoming()) &&
+        incoming().createdByUid == request.auth.uid &&
+        incoming().keys().hasAll([
+          'registrationNumber', 'groomName', 'brideName', 'villageId', 'villageName',
+          'weddingDate', 'weddingTime', 'locationType', 'locationAddress', 'penghuluName',
+          'validationStatus', 'documentsComplete', 'verificationNote',
+          'allowedModinEmails', 'createdByUid', 'createdAt', 'updatedAt'
+        ]) &&
+        incoming().keys().hasOnly([
+          'registrationNumber', 'groomName', 'groomNik', 'brideName', 'brideNik',
+          'villageId', 'villageName', 'weddingDate', 'weddingTime', 'locationType',
+          'locationAddress', 'penghuluName', 'validationStatus', 'documentsComplete',
+          'verificationNote', 'verifiedByName', 'allowedModinEmails',
+          'createdByUid', 'createdAt', 'updatedAt'
+        ]) &&
+        isAdmin() &&
+        exists(/databases/$(database)/documents/villages/$(incoming().villageId));
+
+      allow update: if isSignedIn() &&
+        isValidId(scheduleId) &&
+        isValidSchedule(incoming()) &&
+        incoming().createdByUid == existing().createdByUid &&
+        incoming().createdAt == existing().createdAt &&
+        isAdmin() && (
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'validationStatus', 'documentsComplete', 'verificationNote', 'verifiedByName', 'updatedAt'
+          ]) ||
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'allowedModinEmails', 'villageName', 'updatedAt'
+          ]) ||
+          (incoming().diff(existing()).affectedKeys().hasOnly([
+            'registrationNumber', 'groomName', 'groomNik', 'brideName', 'brideNik',
+            'villageId', 'villageName', 'weddingDate', 'weddingTime', 'locationType',
+            'locationAddress', 'penghuluName', 'validationStatus', 'documentsComplete',
+            'verificationNote', 'verifiedByName', 'allowedModinEmails', 'updatedAt'
+          ]) && exists(/databases/$(database)/documents/villages/$(incoming().villageId)))
+        );
+
+      allow delete: if isSignedIn() && isValidId(scheduleId) && isAdmin();
+    }
+  }
+}
